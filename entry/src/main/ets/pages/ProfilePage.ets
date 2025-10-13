@@ -11,6 +11,12 @@ interface ImageSummary {
   name: string;
 }
 
+/** 图片列表项接口 */
+interface ImageListItem {
+  id: number;
+  name: string;
+}
+
 /** 图片数量响应数据接口 */
 interface ImageCountData {
   number: number;
@@ -25,6 +31,7 @@ struct ProfilePage {
   @State myImages: ImageItem[] = [];
   @State imageCount: number = 0;
   @State isLoading: boolean = false;
+  @State isRefreshing: boolean = false;
   @State currentPage: number = 1;
   @State hasMore: boolean = true;
   @State isLoggedIn: boolean = false;
@@ -137,6 +144,19 @@ struct ProfilePage {
   }
 
   /**
+   * 刷新数据
+   */
+  async refreshData() {
+    this.isRefreshing = true;
+    try {
+      await this.loadUserInfo();
+      await this.loadMyImages(true);
+    } finally {
+      this.isRefreshing = false;
+    }
+  }
+
+  /**
    * 加载更多
    */
   loadMore() {
@@ -170,6 +190,84 @@ struct ProfilePage {
   /**
    * 退出登�?
    */
+  /**
+   * 删除图片
+   */
+  async deleteImage(image: ImageItem) {
+    promptAction.showDialog({
+      title: '确认删除',
+      message: `确定要删除图片"${image.imageName}"吗？此操作不可撤销。`,
+      buttons: [
+        { text: '取消', color: '#999999' },
+        { text: '删除', color: '#FF4444' }
+      ]
+    }).then(async (result) => {
+      if (result.index === 1) {
+        try {
+          console.log('=== 删除图片开始 ===');
+          console.log('图片ID:', image.imageId);
+          console.log('图片名称:', image.imageName);
+          console.log('图片对象:', JSON.stringify(image, null, 2));
+          console.log('当前用户图片列表:', this.myImages.map(img => {
+            const item: ImageListItem = {id: img.imageId, name: img.imageName};
+            return item;
+          }));
+          console.log('要删除的图片是否在用户列表中:', this.myImages.some(img => img.imageId === image.imageId));
+          
+          const response = await ApiService.deleteImage(image.imageId);
+          console.log('=== 删除图片响应 ===');
+          console.log('删除图片响应:', JSON.stringify(response, null, 2));
+          
+          if (response.code === 1) {
+            // 从本地列表中移除图片
+            this.myImages = this.myImages.filter(img => img.imageId !== image.imageId);
+            // 更新图片数量
+            this.imageCount = Math.max(0, this.imageCount - 1);
+            promptAction.showToast({ message: '图片删除成功' });
+            console.log('图片删除成功，当前图片数量:', this.imageCount);
+          } else {
+            console.error('删除图片失败，响应码:', response.code, '消息:', response.msg);
+            console.error('完整响应:', JSON.stringify(response, null, 2));
+            promptAction.showToast({ message: `删除失败: ${response.msg || '未知错误'}` });
+          }
+        } catch (error) {
+          console.error('删除图片异常:', error);
+          console.error('错误类型:', typeof error);
+          console.error('错误构造函数:', error.constructor.name);
+          
+          // 尝试获取错误的各种属性
+          if (error && typeof error === 'object') {
+            console.error('错误属性:', Object.keys(error));
+            console.error('错误消息属性:', error.message);
+            console.error('错误名称:', error.name);
+            console.error('错误堆栈:', error.stack);
+            
+            // 尝试手动序列化错误对象
+            try {
+              const errorStr = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+              console.error('序列化错误对象:', errorStr);
+            } catch (stringifyError) {
+              console.error('无法序列化错误对象:', stringifyError);
+            }
+          }
+          
+          // 显示更具体的错误信息
+          let errorMessage = '未知错误';
+          if (error && typeof error === 'object') {
+            const errorObj = error as Error;
+            if (errorObj.message) {
+              errorMessage = errorObj.message;
+            } else if (errorObj.toString) {
+              errorMessage = errorObj.toString();
+            }
+          }
+          console.error('最终错误消息:', errorMessage);
+          promptAction.showToast({ message: `删除失败: ${errorMessage}` });
+        }
+      }
+    });
+  }
+
   async logout() {
     promptAction.showDialog({
       title: '确认退出',
@@ -320,8 +418,10 @@ struct ProfilePage {
             .justifyContent(FlexAlign.Center)
             .layoutWeight(1)
           } else {
-            // 图片网格
-            Grid() {
+            // 图片网格 - 添加刷新功能
+            Refresh({ refreshing: this.isRefreshing }) {
+              Column() {
+                Grid() {
               ForEach(this.myImages, (image: ImageItem) => {
                 GridItem() {
                   Column() {
@@ -342,6 +442,11 @@ struct ProfilePage {
                   .backgroundColor(Colors.White10)
                   .borderRadius(8)
                   .padding(8)
+                  .onTouch((event: TouchEvent) => {
+                    if (event.type === TouchType.Down) {
+                      this.deleteImage(image);
+                    }
+                  })
                 }
               })
             }
@@ -354,7 +459,7 @@ struct ProfilePage {
               this.loadMore();
             })
 
-            // 加载更多指示�?
+            // 加载更多指示器
             if (this.isLoading) {
               Row() {
                 LoadingProgress()
@@ -371,6 +476,13 @@ struct ProfilePage {
               .width('100%')
               .height(40)
             }
+              }
+              .width('100%')
+              .height('100%')
+            }
+            .onRefreshing(() => {
+              this.refreshData();
+            })
           }
         }
         .layoutWeight(1)

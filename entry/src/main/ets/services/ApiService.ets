@@ -108,4 +108,14 @@ export class ApiService {
     const requestData = new DeleteCommentRequestData(commentId);
     return HttpService.post<void, DeleteCommentRequestData>(`/api/comments/deleteComments${params}`, requestData);
   }
+
+  /** 删除图片（适配后端 /api/image/deleteImage） */
+  static async deleteImage(imageId: number): Promise<ApiResponse<void>> {
+    const url = `/api/image/deleteImage?imageId=${imageId}`;
+    console.log('=== ApiService.deleteImage ===');
+    console.log('删除图片URL:', url);
+    console.log('图片ID参数:', imageId);
+    console.log('参数类型:', typeof imageId);
+    return HttpService.post<void, null>(url, null);
+  }
 }
