@@ -5,6 +5,17 @@ import { ApiService } from '../services/ApiService';
 import { HttpService } from '../services/HttpService';
 import { Colors } from '../common/Colors';
 
+/** 图片摘要信息接口 */
+interface ImageSummary {
+  id: number;
+  name: string;
+}
+
+/** 图片数量响应数据接口 */
+interface ImageCountData {
+  number: number;
+}
+
 /**
  * 个人中心页面
  */
@@ -35,19 +46,32 @@ struct ProfilePage {
     try {
       // 先检查是否有token
       const token = await HttpService.getToken();
+      console.log('检查用户登录状态，token:', token ? '存在' : '不存在');
       if (!token) {
         this.isLoggedIn = false;
         this.imageCount = 0;
         return;
       }
 
+      console.log('开始获取用户图片数量');
       const response = await ApiService.getMyImageCount();
+      console.log('获取图片数量响应:', JSON.stringify(response, null, 2));
+      
       if (response.code === 1) {
-        this.imageCount = response.data || 0;
+        // 后端返回的数据结构是 {number: 2}，需要提取number字段
+        if (response.data && typeof response.data === 'object') {
+          const data = response.data as ImageCountData;
+          this.imageCount = data.number || 0;
+        } else {
+          this.imageCount = 0;
+        }
         this.isLoggedIn = true;
+        console.log('用户已登录，图片数量:', this.imageCount);
+        console.log('响应数据结构 - code:', response.code, 'data:', response.data, 'msg:', response.msg);
       } else {
         this.isLoggedIn = false;
         this.imageCount = 0;
+        console.error('获取图片数量失败，响应码:', response.code, '消息:', response.msg);
       }
     } catch (error) {
       console.error('加载用户信息失败:', error);
@@ -73,15 +97,37 @@ struct ProfilePage {
         size: 8
       };
 
+      console.log('开始加载我的图片，请求参数:', request);
       const response = await ApiService.getMyImages(request);
+      console.log('获取我的图片响应:', JSON.stringify(response, null, 2));
+      
       if (response.code === 1) {
-        const pageData = response.data as PageResponse<ImageItem>;
-        if (refresh) {
-          this.myImages = pageData.records || [];
+        // 后端返回的是直接数组，不是分页对象
+        if (Array.isArray(response.data)) {
+          const imageList = response.data as ImageItem[];
+          console.log('图片数据:', JSON.stringify(imageList, null, 2));
+          console.log('图片记录数:', imageList?.length || 0);
+          
+          if (refresh) {
+            this.myImages = imageList || [];
+          } else {
+            this.myImages = [...this.myImages, ...(imageList || [])];
+          }
+          // 由于后端返回的是简单数组，没有分页信息，所以设置hasMore为false
+          this.hasMore = false;
+          console.log('最终图片列表长度:', this.myImages.length);
+          console.log('图片列表:', this.myImages.map(img => {
+            const summary: ImageSummary = {id: img.imageId, name: img.imageName};
+            return summary;
+          }));
         } else {
-          this.myImages = [...this.myImages, ...(pageData.records || [])];
+          console.error('后端返回的数据不是数组格式:', response.data);
+          this.myImages = [];
+          this.hasMore = false;
         }
-        this.hasMore = this.currentPage < pageData.pages;
+      } else {
+        console.error('获取我的图片失败，响应码:', response.code, '消息:', response.msg);
+        console.error('完整响应:', JSON.stringify(response, null, 2));
       }
     } catch (error) {
       console.error('加载我的图片失败:', error);

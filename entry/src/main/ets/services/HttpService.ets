@@ -81,6 +81,10 @@ export class HttpService {
       } else {
         console.log('没有token，请求将不包含认证信息');
       }
+      
+      // 添加Cookie头（根据后端接口文档要求）
+      requestHeaders['Cookie'] = '62C3252E1BA3A06A895FF08A44B31DD6';
+      console.log('已添加Cookie到请求头');
 
       const options: HttpRequestOptions = {
         method: method as http.RequestMethod,
