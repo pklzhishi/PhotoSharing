@@ -1,0 +1,32 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "primary_green",
+      "value": "#4CAF50"
+    },
+    {
+      "name": "light_green_bg",
+      "value": "#E8F5E8"
+    },
+    {
+      "name": "white_10",
+      "value": "#1AFFFFFF"
+    },
+    {
+      "name": "white_20",
+      "value": "#33FFFFFF"
+    },
+    {
+      "name": "white_40",
+      "value": "#66FFFFFF"
+    },
+    {
+      "name": "white_60",
+      "value": "#99FFFFFF"
+    }
+  ]
+}

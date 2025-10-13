@@ -1,0 +1,555 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "默认模块",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "鸿蒙开发"
+    }
+  ],
+  "paths": {
+    "/api/user/register": {
+      "post": {
+        "summary": "注册",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              },
+              "example": {
+                "userAccount": "1234567890",
+                "password": "123456",
+                "username": "pkl",
+                "telephoneNumber": "15257629461"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/user/login": {
+      "post": {
+        "summary": "登录",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              },
+              "example": {
+                "userAccount": "1234567890",
+                "password": "123456"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/image/imageUpload": {
+      "post": {
+        "summary": "上传图片",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "multipartFile": {
+                    "example": "file://D:\\upload\\test\\QQ20251005-170450.png",
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "imageName": {
+                    "example": "路钰婷",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/userLike/changeUserLike": {
+      "post": {
+        "summary": "点赞/取消点赞",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              },
+              "example": {
+                "imageId": 2
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/comments/postComments": {
+      "post": {
+        "summary": "发表评论",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              },
+              "example": {
+                "content": "这个头像不行",
+                "imageId": 2
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/comments/deleteComments": {
+      "post": {
+        "summary": "删除评论",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "imageId",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "example": 1,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "examples": {
+                  "1": {
+                    "summary": "成功示例",
+                    "value": {
+                      "code": 1,
+                      "msg": null,
+                      "data": null
+                    }
+                  },
+                  "2": {
+                    "summary": "异常示例",
+                    "value": {
+                      "code": 0,
+                      "msg": "无法删除他人评论",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/image/getMyImage": {
+      "post": {
+        "summary": "查看我的发布",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              },
+              "example": {
+                "page": 1,
+                "size": 8
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/image/getMyImageNumber": {
+      "get": {
+        "summary": "获取个人发布作品数",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/image/getImageRandomly": {
+      "post": {
+        "summary": "随机获取图片(刷新)",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "鸿蒙开发"
+        ],
+        "parameters": [
+          {
+            "name": "count",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "example": 8,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "Cookie",
+            "in": "header",
+            "description": "",
+            "example": "\t62C3252E1BA3A06A895FF08A44B31DD6",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "token",
+            "in": "header",
+            "description": "",
+            "example": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsImV4cCI6MTc1OTY3MDcwM30.kdsVlJx_IVbloAulgCglhYJ2JMc5bKMn8TU8K7-_SJk",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": []
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "securitySchemes": {}
+  },
+  "servers": [],
+  "security": []
+}

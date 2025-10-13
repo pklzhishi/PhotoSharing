@@ -1,0 +1,44 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "图片分享应用模块"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "图片分享应用入口"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "图片分享"
+    },
+    {
+      "name": "app_name",
+      "value": "图片分享"
+    },
+    {
+      "name": "login_title",
+      "value": "登录"
+    },
+    {
+      "name": "register_title",
+      "value": "注册"
+    },
+    {
+      "name": "upload_title",
+      "value": "上传图片"
+    },
+    {
+      "name": "profile_title",
+      "value": "个人中心"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "应用需要网络权限来访问后端服务"
+    },
+    {
+      "name": "read_media_permission_reason",
+      "value": "应用需要访问相册来上传图片"
+    }
+  ]
+}
