@@ -297,11 +297,6 @@ struct UploadPage {
               Text('📷')
                 .fontSize(48)
                 .opacity(0.6)
-
-              Text('点击选择图片')
-                .fontSize(14)
-                .fontColor(Colors.Black60)
-                .margin({ top: 8 })
             }
             .width('100%')
             .height(200)

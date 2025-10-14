@@ -5,6 +5,23 @@ import { ApiService } from '../services/ApiService';
 import { HttpService } from '../services/HttpService';
 import { Colors } from '../common/Colors';
 
+/** 图片摘要信息接口 */
+interface ImageSummary {
+  id: number;
+  name: string;
+}
+
+/** 图片列表项接口 */
+interface ImageListItem {
+  id: number;
+  name: string;
+}
+
+/** 图片数量响应数据接口 */
+interface ImageCountData {
+  number: number;
+}
+
 /**
  * 个人中心页面
  */
@@ -14,6 +31,7 @@ struct ProfilePage {
   @State myImages: ImageItem[] = [];
   @State imageCount: number = 0;
   @State isLoading: boolean = false;
+  @State isRefreshing: boolean = false;
   @State currentPage: number = 1;
   @State hasMore: boolean = true;
   @State isLoggedIn: boolean = false;
@@ -35,19 +53,32 @@ struct ProfilePage {
     try {
       // 先检查是否有token
       const token = await HttpService.getToken();
+      console.log('检查用户登录状态，token:', token ? '存在' : '不存在');
       if (!token) {
         this.isLoggedIn = false;
         this.imageCount = 0;
         return;
       }
 
+      console.log('开始获取用户图片数量');
       const response = await ApiService.getMyImageCount();
+      console.log('获取图片数量响应:', JSON.stringify(response, null, 2));
+      
       if (response.code === 1) {
-        this.imageCount = response.data || 0;
+        // 后端返回的数据结构是 {number: 2}，需要提取number字段
+        if (response.data && typeof response.data === 'object') {
+          const data = response.data as ImageCountData;
+          this.imageCount = data.number || 0;
+        } else {
+          this.imageCount = 0;
+        }
         this.isLoggedIn = true;
+        console.log('用户已登录，图片数量:', this.imageCount);
+        console.log('响应数据结构 - code:', response.code, 'data:', response.data, 'msg:', response.msg);
       } else {
         this.isLoggedIn = false;
         this.imageCount = 0;
+        console.error('获取图片数量失败，响应码:', response.code, '消息:', response.msg);
       }
     } catch (error) {
       console.error('加载用户信息失败:', error);
@@ -73,20 +104,55 @@ struct ProfilePage {
         size: 8
       };
 
+      console.log('开始加载我的图片，请求参数:', request);
       const response = await ApiService.getMyImages(request);
+      console.log('获取我的图片响应:', JSON.stringify(response, null, 2));
+      
       if (response.code === 1) {
-        const pageData = response.data as PageResponse<ImageItem>;
-        if (refresh) {
-          this.myImages = pageData.records || [];
+        // 后端返回的是直接数组，不是分页对象
+        if (Array.isArray(response.data)) {
+          const imageList = response.data as ImageItem[];
+          console.log('图片数据:', JSON.stringify(imageList, null, 2));
+          console.log('图片记录数:', imageList?.length || 0);
+          
+          if (refresh) {
+            this.myImages = imageList || [];
+          } else {
+            this.myImages = [...this.myImages, ...(imageList || [])];
+          }
+          // 由于后端返回的是简单数组，没有分页信息，所以设置hasMore为false
+          this.hasMore = false;
+          console.log('最终图片列表长度:', this.myImages.length);
+          console.log('图片列表:', this.myImages.map(img => {
+            const summary: ImageSummary = {id: img.imageId, name: img.imageName};
+            return summary;
+          }));
         } else {
-          this.myImages = [...this.myImages, ...(pageData.records || [])];
+          console.error('后端返回的数据不是数组格式:', response.data);
+          this.myImages = [];
+          this.hasMore = false;
         }
-        this.hasMore = this.currentPage < pageData.pages;
+      } else {
+        console.error('获取我的图片失败，响应码:', response.code, '消息:', response.msg);
+        console.error('完整响应:', JSON.stringify(response, null, 2));
       }
     } catch (error) {
       console.error('加载我的图片失败:', error);
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  /**
+   * 刷新数据
+   */
+  async refreshData() {
+    this.isRefreshing = true;
+    try {
+      await this.loadUserInfo();
+      await this.loadMyImages(true);
+    } finally {
+      this.isRefreshing = false;
     }
   }
 
@@ -124,6 +190,84 @@ struct ProfilePage {
   /**
    * 退出登�?
    */
+  /**
+   * 删除图片
+   */
+  async deleteImage(image: ImageItem) {
+    promptAction.showDialog({
+      title: '确认删除',
+      message: `确定要删除图片"${image.imageName}"吗？此操作不可撤销。`,
+      buttons: [
+        { text: '取消', color: '#999999' },
+        { text: '删除', color: '#FF4444' }
+      ]
+    }).then(async (result) => {
+      if (result.index === 1) {
+        try {
+          console.log('=== 删除图片开始 ===');
+          console.log('图片ID:', image.imageId);
+          console.log('图片名称:', image.imageName);
+          console.log('图片对象:', JSON.stringify(image, null, 2));
+          console.log('当前用户图片列表:', this.myImages.map(img => {
+            const item: ImageListItem = {id: img.imageId, name: img.imageName};
+            return item;
+          }));
+          console.log('要删除的图片是否在用户列表中:', this.myImages.some(img => img.imageId === image.imageId));
+          
+          const response = await ApiService.deleteImage(image.imageId);
+          console.log('=== 删除图片响应 ===');
+          console.log('删除图片响应:', JSON.stringify(response, null, 2));
+          
+          if (response.code === 1) {
+            // 从本地列表中移除图片
+            this.myImages = this.myImages.filter(img => img.imageId !== image.imageId);
+            // 更新图片数量
+            this.imageCount = Math.max(0, this.imageCount - 1);
+            promptAction.showToast({ message: '图片删除成功' });
+            console.log('图片删除成功，当前图片数量:', this.imageCount);
+          } else {
+            console.error('删除图片失败，响应码:', response.code, '消息:', response.msg);
+            console.error('完整响应:', JSON.stringify(response, null, 2));
+            promptAction.showToast({ message: `删除失败: ${response.msg || '未知错误'}` });
+          }
+        } catch (error) {
+          console.error('删除图片异常:', error);
+          console.error('错误类型:', typeof error);
+          console.error('错误构造函数:', error.constructor.name);
+          
+          // 尝试获取错误的各种属性
+          if (error && typeof error === 'object') {
+            console.error('错误属性:', Object.keys(error));
+            console.error('错误消息属性:', error.message);
+            console.error('错误名称:', error.name);
+            console.error('错误堆栈:', error.stack);
+            
+            // 尝试手动序列化错误对象
+            try {
+              const errorStr = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+              console.error('序列化错误对象:', errorStr);
+            } catch (stringifyError) {
+              console.error('无法序列化错误对象:', stringifyError);
+            }
+          }
+          
+          // 显示更具体的错误信息
+          let errorMessage = '未知错误';
+          if (error && typeof error === 'object') {
+            const errorObj = error as Error;
+            if (errorObj.message) {
+              errorMessage = errorObj.message;
+            } else if (errorObj.toString) {
+              errorMessage = errorObj.toString();
+            }
+          }
+          console.error('最终错误消息:', errorMessage);
+          promptAction.showToast({ message: `删除失败: ${errorMessage}` });
+        }
+      }
+    });
+  }
+
   async logout() {
     promptAction.showDialog({
       title: '确认退出',
@@ -274,8 +418,10 @@ struct ProfilePage {
             .justifyContent(FlexAlign.Center)
             .layoutWeight(1)
           } else {
-            // 图片网格
-            Grid() {
+            // 图片网格 - 添加刷新功能
+            Refresh({ refreshing: this.isRefreshing }) {
+              Column() {
+                Grid() {
               ForEach(this.myImages, (image: ImageItem) => {
                 GridItem() {
                   Column() {
@@ -296,6 +442,11 @@ struct ProfilePage {
                   .backgroundColor(Colors.White10)
                   .borderRadius(8)
                   .padding(8)
+                  .onTouch((event: TouchEvent) => {
+                    if (event.type === TouchType.Down) {
+                      this.deleteImage(image);
+                    }
+                  })
                 }
               })
             }
@@ -308,7 +459,7 @@ struct ProfilePage {
               this.loadMore();
             })
 
-            // 加载更多指示�?
+            // 加载更多指示器
             if (this.isLoading) {
               Row() {
                 LoadingProgress()
@@ -325,6 +476,13 @@ struct ProfilePage {
               .width('100%')
               .height(40)
             }
+              }
+              .width('100%')
+              .height('100%')
+            }
+            .onRefreshing(() => {
+              this.refreshData();
+            })
           }
         }
         .layoutWeight(1)

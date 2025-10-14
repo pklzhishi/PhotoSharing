@@ -62,6 +62,10 @@ export class HttpService {
       const httpRequest = http.createHttp();
 
       const requestUrl = url.startsWith('http') ? url : `${HttpService.BASE_URL}${url}`;
+      console.log('=== HTTP请求详情 ===');
+      console.log('请求URL:', requestUrl);
+      console.log('请求方法:', method);
+      console.log('请求数据:', data ? JSON.stringify(data, null, 2) : 'null');
 
       const requestHeaders: Record<string, string> = {
         'Content-Type': 'application/json'
@@ -75,12 +79,23 @@ export class HttpService {
 
       const token = await HttpService.getToken();
       console.log('当前token:', token);
+      console.log('token类型:', typeof token);
+      console.log('token长度:', token ? token.length : 0);
       if (token) {
         requestHeaders['token'] = token;
         console.log('已添加token到请求头');
+        console.log('token值:', token);
       } else {
         console.log('没有token，请求将不包含认证信息');
+        console.log('token为空，可能的原因：用户未登录或token已过期');
       }
+      
+      // 添加Cookie头（根据后端接口文档要求）
+      requestHeaders['Cookie'] = '62C3252E1BA3A06A895FF08A44B31DD6';
+      console.log('已添加Cookie到请求头');
+      
+      console.log('=== 请求头信息 ===');
+      console.log('请求头:', JSON.stringify(requestHeaders, null, 2));
 
       const options: HttpRequestOptions = {
         method: method as http.RequestMethod,
@@ -92,7 +107,10 @@ export class HttpService {
 
       // 添加超时保护
       const timeoutId = setTimeout(() => {
+        console.error('=== 请求超时 ===');
         console.error('请求超时，强制取消');
+        console.error('超时时间:', HttpService.TIMEOUT + 1000, 'ms');
+        console.error('请求URL:', requestUrl);
         httpRequest.destroy();
         reject(new Error('请求超时'));
       }, HttpService.TIMEOUT + 1000); // 比实际超时时间多1秒
@@ -100,6 +118,9 @@ export class HttpService {
       httpRequest.request(requestUrl, options).then((response: http.HttpResponse) => {
         clearTimeout(timeoutId);
         console.log(`HTTP请求响应: ${response.responseCode}, URL: ${requestUrl}`);
+        console.log('响应头:', response.header);
+        console.log('响应内容:', response.result);
+        
         if (response.responseCode === 200) {
           try {
             const result = JSON.parse(response.result as string) as ApiResponse<T>;
@@ -107,6 +128,7 @@ export class HttpService {
             resolve(result);
           } catch (error) {
             console.error('JSON解析失败:', response.result);
+            console.error('解析错误:', error);
             reject(new Error('JSON解析失败'));
           }
         } else {
@@ -115,7 +137,13 @@ export class HttpService {
         }
       }).catch((error: Error) => {
         clearTimeout(timeoutId);
+        console.error('=== 网络请求失败 ===');
         console.error('网络请求失败:', error.message);
+        console.error('错误类型:', typeof error);
+        console.error('错误构造函数:', error.constructor.name);
+        console.error('错误堆栈:', error.stack);
+        console.error('请求URL:', requestUrl);
+        console.error('请求方法:', method);
         reject(error);
       }).finally(() => {
         clearTimeout(timeoutId);
