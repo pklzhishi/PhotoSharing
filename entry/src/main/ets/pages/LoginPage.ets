@@ -113,8 +113,7 @@ struct LoginPage {
       Column() {
         // Logo区域
         Column({ space: 16 }) {
-          // Text('📱')
-          //   .fontSize(80)
+
           Image($r('app.media.tupian'))
             .width('30%')
           Text('拾光映画')
