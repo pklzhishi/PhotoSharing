@@ -4,6 +4,8 @@
     "pages/LoginPage",
     "pages/RegisterPage",
     "pages/UploadPage",
+    "pages/SearchPage",
     "pages/ProfilePage"
   ]
+
 }

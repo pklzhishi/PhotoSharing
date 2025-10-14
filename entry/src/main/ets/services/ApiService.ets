@@ -2,10 +2,11 @@ import { HttpService } from './HttpService';
 import { LoginRequest, RegisterRequest, ApiResponse, LoginSuccessData } from '../models/User';
 import { ImageItem, ImageUploadRequest, PageRequest, PageResponse } from '../models/Image';
 import { PostCommentRequest } from '../models/Comment';
-import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody } from '../models/ApiRequest';
+import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody, SearchImageRequestData } from '../models/ApiRequest';
 
 /** API服务类（完全适配后端接口） */
 export class ApiService {
+ // private URLSearchParams;
   /** 用户注册（适配后端 /api/user/register） */
   static async register(data: RegisterRequest): Promise<ApiResponse<void>> {
     const requestData = new RegisterRequestData(
@@ -118,4 +119,21 @@ export class ApiService {
     console.log('参数类型:', typeof imageId);
     return HttpService.post<void, null>(url, null);
   }
+  /** 搜索图片（适配后端 /api/image/searchImage） */
+   // static async searchImage(imageName: string): Promise<ApiResponse<ImageItem[]>> {
+   //  const url = `/api/image/searchImage?imageName=${imageName}`;
+   //  const emptyData = new EmptyRequestData();
+   //  return HttpService.post<ImageItem[], EmptyRequestData>(url, emptyData);
+   // }
+  static async searchImage(imageName: string): Promise<ApiResponse<ImageItem[]>> {
+    const url = `/api/image/searchImage`;
+    const searchImage = new SearchImageRequestData(imageName);
+    return HttpService.post<ImageItem[], SearchImageRequestData>(url, searchImage);
+  }
+  /** 随机获取图片（适配后端 /api/image/getImageRandomly） */
+  // static async getRandomImages(count: number = 8): Promise<ApiResponse<ImageItem[]>> {
+  //   const url = `/api/image/getImageRandomly?count=${count}`;
+  //   const emptyData = new EmptyRequestData();
+  //   return HttpService.post<ImageItem[], EmptyRequestData>(url, emptyData);
+  // }
 }

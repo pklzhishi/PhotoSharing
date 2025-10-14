@@ -118,3 +118,12 @@ export class DeleteCommentRequestData {
 
 /** 空请求（用于无Body的POST接口，如 /api/image/getImageRandomly） */
 export class EmptyRequestData {}
+
+/** 搜索图片请求（匹配后端 /api/image/searchImage） */
+export class SearchImageRequestData {
+  imageName: JsonValue; // 后端要求的图片名称字段
+
+  constructor(imageName: JsonValue) {
+    this.imageName = imageName;
+  }
+}
