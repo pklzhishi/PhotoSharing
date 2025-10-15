@@ -10,6 +10,10 @@ export interface ImageItem {
   username?: string;
   likeCount?: number;
   isLiked?: boolean;
+  isBookmarked?: boolean; // 是否已收藏
+  bookmarkCount?: number; // 收藏数量
+  content?: string; // 图片描述
+  commentCount?: number; // 评论数
 }
 
 /**

@@ -25,3 +25,11 @@ export interface ApiResponse<T = void> {
 export interface LoginSuccessData {
   token: string;
 }
+
+/** 用户信息数据结构 */
+export interface UserInfo {
+  username?: string;
+  userAccount?: string;
+  telephoneNumber?: string;
+  userId?: number;
+}

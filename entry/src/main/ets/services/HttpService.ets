@@ -17,10 +17,9 @@ interface HttpRequestOptions {
 }
 
 
-
 /** HTTP请求服务 */
 export class HttpService {
-  private static readonly BASE_URL = 'http://115.29.241.234:8000';//115.29.241.234:8000
+  private static readonly BASE_URL = 'http://115.29.241.234:8000';//115.29.241.234:8000，10.34.18.43:8000
   private static readonly TIMEOUT = 5000; // 减少超时时间到5秒
   private static tokenValue: string | null = null;
   private static preferencesStore: preferences.Preferences | null = null;
@@ -51,6 +50,8 @@ export class HttpService {
     return HttpService.request<T>('DELETE', url, null, headers);
   }
 
+
+
   /** 通用请求方法 */
   private static async request<T>(
     method: string,
@@ -66,6 +67,8 @@ export class HttpService {
       console.log('请求URL:', requestUrl);
       console.log('请求方法:', method);
       console.log('请求数据:', data ? JSON.stringify(data, null, 2) : 'null');
+      console.log('请求体内容:', data ? JSON.stringify(data) : '');
+      console.log('请求体长度:', data ? JSON.stringify(data).length : 0);
 
       const requestHeaders: Record<string, string> = {
         'Content-Type': 'application/json'
@@ -104,6 +107,10 @@ export class HttpService {
         connectTimeout: HttpService.TIMEOUT,
         readTimeout: HttpService.TIMEOUT
       };
+      
+      console.log('=== 请求选项详情 ===');
+      console.log('请求选项:', JSON.stringify(options, null, 2));
+      console.log('extraData内容:', options.extraData);
 
       // 添加超时保护
       const timeoutId = setTimeout(() => {
@@ -127,24 +134,65 @@ export class HttpService {
             console.log('请求成功:', result);
             resolve(result);
           } catch (error) {
+            console.error('=== JSON解析失败 ===');
             console.error('JSON解析失败:', response.result);
             console.error('解析错误:', error);
+            console.error('响应内容类型:', typeof response.result);
+            // console.error('响应内容长度:', response.result ? response.result.length : 0);
             reject(new Error('JSON解析失败'));
           }
         } else {
+          console.error('=== HTTP错误 ===');
           console.error(`HTTP错误: ${response.responseCode}, 响应: ${response.result}`);
+          console.error('响应头:', response.header);
+          console.error('响应内容:', response.result);
+          console.error('响应内容类型:', typeof response.result);
+
+          // 尝试解析响应内容
+          // try {
+          //   const responseData = JSON.parse(response.result as string);
+          //   console.error('解析后的响应数据:', JSON.stringify(responseData, null, 2));
+          // } catch (parseError) {
+          //   console.error('无法解析响应内容:', parseError);
+          // }
+
           reject(new Error(`HTTP错误: ${response.responseCode}`));
         }
       }).catch((error: Error) => {
         clearTimeout(timeoutId);
         console.error('=== 网络请求失败 ===');
-        console.error('网络请求失败:', error.message);
-        console.error('错误类型:', typeof error);
-        console.error('错误构造函数:', error.constructor.name);
-        console.error('错误堆栈:', error.stack);
-        console.error('请求URL:', requestUrl);
-        console.error('请求方法:', method);
-        reject(error);
+
+        // 安全地获取错误信息
+        let errorMessage = '未知错误';
+        let errorStack = '';
+
+        if (error && typeof error === 'object') {
+          const errorObj = error as Error;
+          errorMessage = errorObj.message || '未知错误';
+          errorStack = errorObj.stack || '';
+          console.error('网络请求失败:', errorMessage);
+          console.error('错误类型:', typeof error);
+          console.error('错误构造函数:', error.constructor.name);
+          console.error('错误堆栈:', errorStack);
+          console.error('请求URL:', requestUrl);
+          console.error('请求方法:', method);
+
+          // 尝试获取更详细的错误信息
+          console.error('错误对象属性:', Object.keys(error));
+          console.error('错误对象值:', JSON.stringify(error, null, 2));
+        } else {
+          console.error('网络请求失败:', String(error));
+          console.error('错误类型:', typeof error);
+          console.error('请求URL:', requestUrl);
+          console.error('请求方法:', method);
+        }
+
+        // 确保抛出Error对象
+        if (error instanceof Error) {
+          reject(error);
+        } else {
+          reject(new Error(String(error)));
+        }
       }).finally(() => {
         clearTimeout(timeoutId);
         httpRequest.destroy();
@@ -176,7 +224,7 @@ export class HttpService {
         // 获取文件扩展名并确定MIME类型
         const fileExtension = fileName.toLowerCase().split('.').pop() || '';
         const mimeType = MultipartBuilder.getMimeType(fileExtension);
-        
+
         console.log('MultipartBuilder调试信息:');
         console.log('- 文件名:', fileName);
         console.log('- 文件扩展名:', fileExtension);
@@ -191,7 +239,7 @@ export class HttpService {
           .addFormField('imageName', userImageName || fileName)
           .addFormField('content', content)
           .build();
-          
+
         console.log('请求体长度:', formDataBody.length);
         console.log('Content-Type:', builder.getContentType());
 
@@ -409,12 +457,12 @@ export class HttpService {
         console.log('a请求URL:', requestUrl);
         console.log('a请求头:', requestHeaders);
         console.log('a请求选项:', JSON.stringify(options));
-        
+
         httpRequest.request(requestUrl, options).then((response: http.HttpResponse) => {
           console.log(`a文件上传响应: ${response.responseCode}, URL: ${requestUrl}`);
           console.log('a响应头:', response.header);
           console.log('a响应内容:', response.result);
-          
+
           if (response.responseCode === 200) {
             try {
               const result = JSON.parse(response.result as string) as ApiResponse<T>;
@@ -682,10 +730,10 @@ export class HttpService {
         const buffer = new ArrayBuffer(stat.size);
         fs.readSync(file.fd, buffer);
         fs.closeSync(file);
-        
+
         console.log('使用官方方法上传文件:', filePath);
         console.log('文件大小:', stat.size, '字节');
-        
+
         // 调用postFile方法
         const result = await HttpService.postFile<T>(url, buffer, fileName);
         resolve(result);
@@ -701,25 +749,25 @@ export class HttpService {
     return new Promise<ApiResponse<T>>((resolve, reject) => {
       // 创建HTTP请求对象
       const httpRequest = http.createHttp();
-      
+
       const requestUrl = url.startsWith('http') ? url : `${HttpService.BASE_URL}${url}`;
-      
+
       // 获取token
       HttpService.getToken().then(token => {
         const headers: Record<string, string> = {
           'Content-Type': 'multipart/form-data'
         };
-        
+
         if (token) {
           headers['token'] = token;
         }
         headers['Cookie'] = '62C3252E1BA3A06A895FF08A44B31DD6';
-        
+
         console.log('使用官方postFile方法上传文件');
         console.log('请求URL:', requestUrl);
         console.log('文件名:', fileName);
         console.log('请求头:', headers);
-        
+
         // 发起POST请求
         httpRequest.request(
           requestUrl,
@@ -727,7 +775,7 @@ export class HttpService {
             method: http.RequestMethod.POST,
             header: headers,
             // 配置表单数据
-            multiFormDataList: [ 
+            multiFormDataList: [
               {
                 name: 'multipartFile',  // 与服务端定义的参数名保持一致
                 contentType: 'image/*', // 图片类型
@@ -749,7 +797,7 @@ export class HttpService {
                 console.error('[HTTP] 销毁请求时出错:', destroyError);
               }
             };
-            
+
             // 处理响应结果
             if (err) {
               console.error('postFile上传失败:', err.message);
@@ -794,20 +842,20 @@ export class HttpService {
     return new Promise<ApiResponse<T>>(async (resolve, reject) => {
       try {
         const requestUrl = url.startsWith('http') ? url : `${HttpService.BASE_URL}${url}`;
-        
+
         // 获取token
         const token = await HttpService.getToken();
-        
+
         // 构建请求头
         const headers: Record<string, string> = {
           'Content-Type': 'multipart/form-data'
         };
-        
+
         if (token) {
           headers['token'] = token;
         }
         headers['Cookie'] = '62C3252E1BA3A06A895FF08A44B31DD6';
-        
+
         console.log('=== HttpService.uploadFileWithRequest 开始 ===');
         console.log('使用@ohos.request.uploadFile上传文件');
         console.log('请求URL:', requestUrl);
@@ -815,22 +863,22 @@ export class HttpService {
         console.log('文件名:', fileName);
         console.log('请求头:', headers);
         console.log('Context是否存在:', HttpService.context !== null);
-        
+
         // 获取文件扩展名
         const fileExtension = fileName.toLowerCase().split('.').pop() || 'jpg';
-        
+
         // 使用@ohos.request.uploadFile上传
         console.log('准备调用 request.uploadFile...');
         console.log('Context类型:', typeof HttpService.context);
         console.log('文件扩展名:', fileExtension);
-        
+
         console.log('准备发送的请求参数:');
         console.log('- URL:', requestUrl);
         console.log('- 文件名:', fileName);
         console.log('- 文件路径:', filePath);
         console.log('- 内容描述:', content);
         console.log('- 请求头:', headers);
-        
+
         const uploader = await request.uploadFile(HttpService.context!, {
           method: 'POST',
           url: requestUrl,
@@ -846,15 +894,15 @@ export class HttpService {
             { name: 'content', value: content }
           ]
         });
-        
+
         console.log('开始设置事件监听器...');
-        
+
         // 监听上传进度
         uploader.on('progress', (uploadedSize: number, totalSize: number) => {
           const progress = Math.round((uploadedSize / totalSize) * 100);
           console.log(`上传进度: ${progress}% (${uploadedSize}/${totalSize})`);
         });
-        
+
         // 监听上传完成
         uploader.on('complete', (data: Array<object>) => {
           console.log('=== 上传完成事件触发 ===');
@@ -874,7 +922,7 @@ export class HttpService {
             reject(new Error('JSON解析失败'));
           }
         });
-        
+
         // 监听上传失败
         uploader.on('fail', (data: Array<object>) => {
           console.error('=== 上传失败事件触发 ===');
@@ -882,9 +930,9 @@ export class HttpService {
           console.error('失败数据类型:', typeof data);
           reject(new Error('上传失败'));
         });
-        
+
         console.log('事件监听器设置完成，等待上传结果...');
-        
+
       } catch (error) {
         console.error('request.uploadFile处理失败:', error);
         reject(new Error('文件处理失败'));

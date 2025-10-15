@@ -39,6 +39,10 @@
     {
       "name": "read_media_permission_reason",
       "value": "应用需要访问相册来上传图片"
+    },
+    {
+      "name": "write_media_permission_reason",
+      "value": "应用需要保存图片到相册"
     }
   ]
 }

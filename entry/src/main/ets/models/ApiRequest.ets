@@ -118,3 +118,30 @@ export class DeleteCommentRequestData {
 
 /** 空请求（用于无Body的POST接口，如 /api/image/getImageRandomly） */
 export class EmptyRequestData {}
+
+/** 搜索图片请求（匹配后端 /api/image/searchImage） */
+export class SearchImageRequestData {
+  imageName: string;
+
+  constructor(imageName: string) {
+    this.imageName = imageName;
+  }
+}
+
+/** 获取图片信息请求（匹配后端 /api/image/getImageInformation） */
+export class GetImageInformationRequestData {
+  imageId: number;
+
+  constructor(imageId: number) {
+    this.imageId = imageId;
+  }
+}
+
+/** 收藏/取消收藏请求（匹配后端 /api/bookmark/changeBookmark） */
+export class ChangeBookmarkRequestData {
+  imageId: number;
+
+  constructor(imageId: number) {
+    this.imageId = imageId;
+  }
+}

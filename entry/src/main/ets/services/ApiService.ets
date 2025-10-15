@@ -1,8 +1,8 @@
 import { HttpService } from './HttpService';
-import { LoginRequest, RegisterRequest, ApiResponse, LoginSuccessData } from '../models/User';
+import { LoginRequest, RegisterRequest, ApiResponse, LoginSuccessData, UserInfo } from '../models/User';
 import { ImageItem, ImageUploadRequest, PageRequest, PageResponse } from '../models/Image';
-import { PostCommentRequest } from '../models/Comment';
-import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody } from '../models/ApiRequest';
+import { PostCommentRequest, Comment } from '../models/Comment';
+import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody, SearchImageRequestData, GetImageInformationRequestData, ChangeBookmarkRequestData } from '../models/ApiRequest';
 
 /** API服务类（完全适配后端接口） */
 export class ApiService {
@@ -79,6 +79,12 @@ export class ApiService {
     return HttpService.post<ImageItem[], EmptyRequestData>(url, emptyData);
   }
 
+  /** 搜索图片（适配后端 /api/image/searchImage） */
+  static async searchImages(imageName: string): Promise<ApiResponse<ImageItem[]>> {
+    const requestData = new SearchImageRequestData(imageName);
+    return HttpService.post<ImageItem[], SearchImageRequestData>('/api/image/searchImage', requestData);
+  }
+
   /** 查看我的发布（适配后端 /api/image/getMyImage） */
   static async getMyImages(pageData: PageRequest): Promise<ApiResponse<PageResponse<ImageItem>>> {
     const requestData = new PageRequestData(pageData.page, pageData.size);
@@ -112,10 +118,71 @@ export class ApiService {
   /** 删除图片（适配后端 /api/image/deleteImage） */
   static async deleteImage(imageId: number): Promise<ApiResponse<void>> {
     const url = `/api/image/deleteImage?imageId=${imageId}`;
-    console.log('=== ApiService.deleteImage ===');
-    console.log('删除图片URL:', url);
-    console.log('图片ID参数:', imageId);
-    console.log('参数类型:', typeof imageId);
-    return HttpService.post<void, null>(url, null);
+    
+    console.log('=== 删除图片API调用开始 ===');
+    console.log('图片ID:', imageId);
+    console.log('图片ID类型:', typeof imageId);
+    console.log('请求URL:', url);
+    console.log('完整URL:', `http://10.34.18.43:8000${url}`);
+    
+    try {
+      console.log('准备调用HttpService.post...');
+      const result = await HttpService.post<void, null>(url, null);
+      console.log('HttpService.post调用成功，返回结果:', result);
+      return result;
+    } catch (error) {
+      console.error('=== ApiService.deleteImage异常 ===');
+      console.error('ApiService.deleteImage捕获到异常:', error);
+      console.error('异常类型:', typeof error);
+      console.error('异常构造函数:', error.constructor.name);
+      
+      // 将错误转换为Error对象
+      if (error instanceof Error) {
+        throw error;
+      } else {
+        throw new Error(String(error));
+      }
+    }
+  }
+
+  /** 获取图片详情（适配后端 /api/image/getImageDetail） */
+  static async getImageDetail(imageId: number): Promise<ApiResponse<ImageItem>> {
+    const url = `/api/image/getImageDetail?imageId=${imageId}`;
+    const emptyData = new EmptyRequestData();
+    return HttpService.post<ImageItem, EmptyRequestData>(url, emptyData);
+  }
+
+  /** 获取图片评论列表（适配后端 /api/comments/getComments） */
+  static async getImageComments(imageId: number): Promise<ApiResponse<Comment[]>> {
+    const url = `/api/comments/getComments?imageId=${imageId}`;
+    const emptyData = new EmptyRequestData();
+    return HttpService.post<Comment[], EmptyRequestData>(url, emptyData);
+  }
+
+  /** 获取收藏列表（适配后端 /api/bookmark/getBookmarkList） */
+  static async getBookmarkList(): Promise<ApiResponse<ImageItem[]>> {
+    return HttpService.get<ImageItem[]>('/api/bookmark/getBookmarkList');
+  }
+
+  /** 获取用户信息 */
+  static async getUserInfo(): Promise<ApiResponse<UserInfo>> {
+    return HttpService.get<UserInfo>('/api/user/getUserInfo');
+  }
+
+  /** 获取用户浏览记录 */
+  static async getBrowsingHistoryList(): Promise<ApiResponse<ImageItem[]>> {
+    return HttpService.get<ImageItem[]>('/api/bookmark/getBrowsingHistoryList');
+  }
+
+  /** 获取图片基础信息并记录浏览记录 */
+  static async getImageInformation(imageId: number): Promise<ApiResponse<ImageItem>> {
+    const requestData = new GetImageInformationRequestData(imageId);
+    return HttpService.post<ImageItem, GetImageInformationRequestData>('/api/image/getImageInformation', requestData);
+  }
+
+  /** 收藏/取消收藏 */
+  static async changeBookmark(imageId: number): Promise<ApiResponse<void>> {
+    const requestData = new ChangeBookmarkRequestData(imageId);
+    return HttpService.post<void, ChangeBookmarkRequestData>('/api/bookmark/changeBookmark', requestData);
   }
 }

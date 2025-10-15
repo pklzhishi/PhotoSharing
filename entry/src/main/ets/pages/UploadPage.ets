@@ -9,6 +9,7 @@ import { Colors } from '../common/Colors';
 import { ApiResponse } from '../models/User';
 import { MultipartBuilder } from '../services/MultipartBuilder';
 import http from '@ohos.net.http';
+import { BottomNavBar } from '../common/BottomNavBar';
 
 /**
  * 图片上传页面
@@ -21,6 +22,10 @@ struct UploadPage {
   @State content: string = '';
   @State isUploading: boolean = false;
   @State previewImage: image.PixelMap | null = null;
+
+  aboutToAppear() {
+    // 页面初始化
+  }
 
   /**
    * 选择图片
@@ -255,16 +260,10 @@ struct UploadPage {
     Column() {
       // 顶部导航栏
       Row() {
-        Text('←')
-          .fontSize(24)
-          .fontColor(Color.Black)
-          .onClick(() => this.goBack())
-
         Text('上传图片')
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
           .fontColor(Color.Black)
-          .margin({ left: 16 })
 
         Blank()
       }
@@ -388,6 +387,9 @@ struct UploadPage {
       .width('100%')
       .padding({ left: 24, right: 24, top: 24 })
       .layoutWeight(1)
+
+      // 底部导航栏
+      BottomNavBar({ currentPage: 'upload' })
     }
     .width('100%')
     .height('100%')
