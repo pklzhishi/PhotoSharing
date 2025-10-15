@@ -3,11 +3,24 @@ import promptAction from '@ohos.promptAction';
 import fs from '@ohos.file.fs';
 import image from '@ohos.multimedia.image';
 import http from '@ohos.net.http';
+// import photoAccessHelper from '@ohos.file.photoAccessHelper';
+// import fileIo from '@ohos.file.fileIo';
+import { fileIo } from '@kit.CoreFileKit';
+import { abilityAccessCtrl } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
+// import { Intent } from '@ohos.ability'; // 可选：用于打开设置页面
+import { fileUri } from '@kit.CoreFileKit';
+import { photoAccessHelper } from '@kit.MediaLibraryKit';
+
+
+// 修改后（正确路径）
 import { ImageItem } from '../models/Image';
 import { Comment } from '../models/Comment';
+
 import { ApiService } from '../services/ApiService';
 import { Colors } from '../common/Colors';
 import { BottomNavBar } from '../common/BottomNavBar';
+import { HttpService } from '../services/HttpService';
 
 // 定义点赞数据接口
 interface LikeData {
@@ -50,6 +63,121 @@ struct ImageDetailPage {
   @State imageId: number = 0;
   @State showCommentInput: boolean = false; // 控制评论输入框显示
   @State isBookmarking: boolean = false; // 控制收藏操作状态
+  @State displayImageUri: string = '';
+  @State showActions: boolean = false; // 右上角更多菜单
+  @State isOwner: boolean = false; // 是否为本人发布
+  @State img: PixelMap | null = null; // 用于保存的图片数据
+
+  /**
+   * 保存图片到相册 - 使用沙箱环境方法
+   */
+  async saveScreenshot(pixelMap: image.PixelMap, filename: string) {
+    const docExt: string = 'jpg';
+    let targetPath: string = '';
+    try {
+      let imagePackerApi = image.createImagePacker();
+      let packOpts: image.PackingOption = { format: "image/jpeg", quality: 90 };
+
+      // 保存文件到沙箱环境
+      const imgBuffer: ArrayBuffer = await imagePackerApi.packing(pixelMap, packOpts);
+      targetPath = (getContext(this) as common.UIAbilityContext).filesDir + "/" + filename + '.' + docExt;
+      let file = await fileIo.open(targetPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.READ_WRITE);
+      await fileIo.write(file.fd, imgBuffer);
+      await fileIo.close(file.fd);
+
+      // 先缓存增加预览图
+      let dirpath = (getContext(this) as common.UIAbilityContext).tempDir + '/temp_' + filename + '.jpg';
+      let dirUri = fileUri.getUriFromPath(dirpath);
+      let finalFile = fs.openSync(targetPath, fs.OpenMode.READ_ONLY);
+      let dirFile = fs.openSync(dirpath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
+      fs.copyFileSync(finalFile.fd, dirFile.fd);
+      fs.closeSync(finalFile);
+      fs.closeSync(dirFile);
+
+      // 保存到相册
+      let srcFileUris: Array<string> = [dirUri];
+      let photoCreationConfigs: Array<photoAccessHelper.PhotoCreationConfig> = [
+        {
+          fileNameExtension: 'jpg',
+          photoType: photoAccessHelper.PhotoType.IMAGE,
+        }
+      ];
+      let desFileUris: Array<string> = await photoAccessHelper.getPhotoAccessHelper(getContext(this))
+        .showAssetsCreationDialog(srcFileUris, photoCreationConfigs);
+      let desFile: fileIo.File = await fileIo.open(desFileUris[0], fileIo.OpenMode.WRITE_ONLY);
+      let srcFile: fileIo.File = await fileIo.open(dirUri, fileIo.OpenMode.READ_ONLY);
+      await fileIo.copyFile(srcFile.fd, desFile.fd);
+      fileIo.closeSync(srcFile);
+      fileIo.closeSync(desFile);
+
+      promptAction.showToast({ 
+        message: '图片已保存到相册！',
+        duration: 3000
+      });
+
+    } catch (error) {
+      // 发生异常要移除沙箱文件
+      if (fs.accessSync(targetPath)) {
+        fs.unlinkSync(targetPath);
+      }
+      console.error('保存图片失败:', error);
+      promptAction.showToast({ 
+        message: '保存失败: ' + String(error),
+        duration: 3000
+      });
+    }
+  }
+
+  /**
+   * 检查相册权限
+   */
+  async checkPermission(): Promise<boolean> {
+    const context = getContext(this) as common.UIAbilityContext;
+    const atManager = abilityAccessCtrl.createAtManager();
+    try {
+      const grantStatus = await atManager.requestPermissionsFromUser(
+        context,
+        ['ohos.permission.WRITE_MEDIA', 'ohos.permission.WRITE_IMAGEVIDEO']
+      );
+      console.log('权限申请结果:', grantStatus);
+      return grantStatus.authResults[0] === 0;
+    } catch (err) {
+      console.error(`权限申请失败: ${err}`);
+      return false;
+    }
+  }
+
+  /**
+   * 打开设置页面 - 可选功能
+   */
+  // openSettings() {
+  //   const context = getContext(this) as common.UIAbilityContext;
+  //   const intent = new Intent();
+  //   intent.action = 'action.settings.app.info';
+  //   intent.parameters = { 
+  //     'settingsParamBundleName': context.abilityInfo.bundleName 
+  //   };
+  //   context.startAbility(intent).catch((err: Error) => {
+  //     console.error(`打开设置失败: ${err.message}`);
+  //   });
+  // }
+
+  /** 统一获取可显示/下载的图片URL，处理相对路径或仅文件名 */
+  private getDisplayImageUrl(): string {
+    const base = HttpService.getBaseUrl();
+    const url = this.imageDetail ? this.imageDetail.imageUrl : '';
+    if (!url) return '';
+    // 1) 已经是完整URL
+    if (url.startsWith('http')) {
+      return url;
+    }
+    // 2) 可能是以/开头的相对路径
+    if (url.includes('/') && (url.startsWith('/') || url.indexOf('/') > 0)) {
+      return `${base}${url.startsWith('/') ? url : '/' + url}`;
+    }
+    // 3) 仅文件名（例如 123.png）→ 拼接静态资源路径 /images/<filename>
+    return `${base}/images/${encodeURIComponent(url)}`;
+  }
 
   // 使用全局存储评论数据、点赞状态和收藏状态（更持久）
   private static getGlobalStorage(): Record<string, string> {
@@ -105,13 +233,20 @@ struct ImageDetailPage {
     interface RouterParams {
       imageId: number;
       imageData?: string; // 可选的图片数据
+      isOwner?: boolean;   // 是否为本人发布
     }
     const params = router.getParams() as RouterParams;
     console.log('接收到的参数:', params);
+    console.log('参数类型:', typeof params);
+    console.log('isOwner 原始值:', params?.isOwner);
+    console.log('isOwner 类型:', typeof params?.isOwner);
     
     if (params && params.imageId) {
       this.imageId = params.imageId;
+      this.isOwner = !!params.isOwner;
       console.log('开始加载图片详情，图片ID:', this.imageId);
+      console.log('isOwner 参数值:', params.isOwner);
+      console.log('this.isOwner 设置后:', this.isOwner);
       
       // 如果传递了完整的图片数据，直接使用
       if (params.imageData) {
@@ -119,6 +254,8 @@ struct ImageDetailPage {
           this.imageDetail = JSON.parse(params.imageData);
           console.log('使用传递的图片数据:', this.imageDetail);
           this.isLoading = false;
+          // 预备可显示图片地址（本地或完整URL）
+          this.ensureDisplayImageUri();
           // 仍然尝试加载评论（如果API存在的话）
           this.loadComments();
         } catch (error) {
@@ -159,6 +296,8 @@ struct ImageDetailPage {
       // 由于后端可能没有getImageDetail API，我们使用传递过来的图片数据
       if (this.imageDetail) {
         console.log('使用传递的图片数据:', this.imageDetail);
+        // 预备可显示图片地址（本地或完整URL）
+        this.ensureDisplayImageUri();
         
         // 尝试从本地存储加载点赞状态
         const likeStatus = await this.loadLikeStatusFromLocal(this.imageId);
@@ -197,6 +336,68 @@ struct ImageDetailPage {
       promptAction.showToast({ message: '加载失败' });
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  /**
+   * 准备详情页可显示的图片地址：
+   * - 如果是完整URL或带路径的相对URL，直接补全使用
+   * - 如果只有文件名，则从受保护接口带token下载到本地缓存并使用本地文件路径显示
+   */
+  async ensureDisplayImageUri() {
+    try {
+      if (!this.imageDetail) {
+        this.displayImageUri = '';
+        return;
+      }
+      const base = HttpService.getBaseUrl();
+      const raw = this.imageDetail.imageUrl || '';
+      if (!raw) {
+        this.displayImageUri = '';
+        return;
+      }
+      // 完整URL或含路径的相对URL → 直接补全
+      if (raw.startsWith('http') || raw.includes('/')) {
+        this.displayImageUri = raw.startsWith('http') ? raw : `${base}${raw.startsWith('/') ? raw : '/' + raw}`;
+      } else {
+        // 仅文件名 → 直接使用静态资源路径 /images/<filename>
+        const publicUrl = `${base}/images/${encodeURIComponent(raw)}`;
+        this.displayImageUri = publicUrl;
+        console.log('采用公开图片地址用于展示:', publicUrl);
+      }
+      
+      // 同时加载图片数据到 PixelMap 用于保存
+      await this.loadImageForSave();
+    } catch (e) {
+      console.error('ensureDisplayImageUri 失败:', e);
+      this.displayImageUri = '';
+    }
+  }
+
+  /**
+   * 加载图片数据到 PixelMap 用于保存
+   */
+  async loadImageForSave() {
+    try {
+      if (!this.displayImageUri) {
+        this.img = null;
+        return;
+      }
+      
+      console.log('开始加载图片数据用于保存:', this.displayImageUri);
+      const imageData = await this.downloadImage(this.displayImageUri);
+      if (imageData) {
+        const imageSource = image.createImageSource(imageData);
+        this.img = await imageSource.createPixelMap();
+        imageSource.release();
+        console.log('图片数据加载成功，可用于保存');
+      } else {
+        console.error('图片数据加载失败');
+        this.img = null;
+      }
+    } catch (e) {
+      console.error('loadImageForSave 失败:', e);
+      this.img = null;
     }
   }
 
@@ -668,156 +869,48 @@ struct ImageDetailPage {
   }
 
   /**
-   * 保存图片到相册
+   * 保存图片到相册 - 使用沙箱环境方法
    */
   async saveImage() {
-    if (!this.imageDetail) {
-      console.error('图片详情为空，无法保存');
+    if (!this.img) {
+      promptAction.showToast({ message: '图片数据未准备好，请稍后再试' });
+      return;
+    }
+
+    // 首先检查权限
+    if (!await this.checkPermission()) {
+      promptAction.showToast({ 
+        message: '需要相册权限，请在设置中手动开启',
+        duration: 3000
+      });
       return;
     }
 
     try {
-      console.log('=== 开始保存图片 ===');
-      console.log('图片URL:', this.imageDetail.imageUrl);
+      console.log('=== 开始保存图片到相册 ===');
       
       // 显示保存中提示
       promptAction.showToast({ 
-        message: '正在保存图片...',
+        message: '正在保存图片到相册...',
         duration: 1000
       });
 
-      // 下载图片
-      console.log('步骤1: 开始下载图片');
-      const imageData = await this.downloadImage(this.imageDetail.imageUrl);
-      if (!imageData) {
-        console.error('图片下载失败，尝试创建测试文件');
-        // 如果下载失败，创建一个简单的测试文件
-        const testData = new ArrayBuffer(1024); // 1KB的测试数据
-        const testArray = new Uint8Array(testData);
-        for (let i = 0; i < testArray.length; i++) {
-          testArray[i] = i % 256; // 填充测试数据
-        }
-        
-        const timestamp = new Date().getTime();
-        const fileName = `PhotoSharing_${timestamp}.txt`;
-        const dirPath = '/data/storage/el2/base/cache';
-        const filePath = `${dirPath}/${fileName}`;
-        
-        try {
-          await fs.mkdir(dirPath, true);
-          const file = await fs.open(filePath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY);
-          await fs.write(file.fd, testData);
-          await fs.close(file.fd);
-          
-          promptAction.showToast({ 
-            message: '测试文件已保存！',
-            duration: 3000
-          });
-          
-          console.log('测试文件保存成功:', filePath);
-          return;
-        } catch (testError) {
-          console.error('测试文件保存也失败:', testError);
-          throw new Error('下载图片失败且无法创建测试文件');
-        }
-      }
-      console.log('步骤1: 图片下载成功，数据大小:', imageData.byteLength);
-
-      // 创建图片源
-      console.log('步骤2: 创建图片源');
-      const imageSource = image.createImageSource(imageData);
-      
-      // 创建PixelMap
-      console.log('步骤3: 创建PixelMap');
-      const pixelMap = await imageSource.createPixelMap();
-      
-      // 创建图片打包器
-      console.log('步骤4: 创建图片打包器');
-      const imagePacker = image.createImagePacker();
-      const packOpts: image.PackingOption = {
-        format: 'image/jpeg',
-        quality: 90
-      };
-      
-      // 打包图片
-      console.log('步骤5: 打包图片');
-      const arrayBuffer = await imagePacker.packing(pixelMap, packOpts);
-      console.log('步骤5: 图片打包成功，大小:', arrayBuffer.byteLength);
-      
-      // 生成文件名和路径
+      // 生成文件名
       const timestamp = new Date().getTime();
-      const fileName = `PhotoSharing_${timestamp}.jpg`;
-      console.log('步骤6: 生成文件名:', fileName);
+      const filename = `PhotoSharing_${timestamp}`;
       
-      // 尝试保存到用户可访问的目录
-      let dirPath = '';
-      let filePath = '';
-      
-      try {
-        // 首先尝试保存到Documents目录
-        dirPath = '/data/storage/el2/base/haps/entry/files/Documents';
-        filePath = `${dirPath}/${fileName}`;
-        console.log('步骤7: 尝试Documents目录:', filePath);
-        await fs.mkdir(dirPath, true);
-        console.log('步骤7: Documents目录创建成功');
-      } catch (e) {
-        try {
-          // 如果Documents目录失败，尝试保存到Downloads目录
-          dirPath = '/data/storage/el2/base/haps/entry/files/Downloads';
-          filePath = `${dirPath}/${fileName}`;
-          console.log('步骤7: 尝试Downloads目录:', filePath);
-          await fs.mkdir(dirPath, true);
-          console.log('步骤7: Downloads目录创建成功');
-        } catch (e2) {
-          // 最后使用cache目录作为备用
-          dirPath = '/data/storage/el2/base/cache';
-          filePath = `${dirPath}/${fileName}`;
-          console.log('步骤7: 使用缓存目录:', filePath);
-          await fs.mkdir(dirPath, true);
-          console.log('步骤7: 缓存目录创建成功');
-        }
-      }
-      
-      // 写入文件
-      console.log('步骤9: 开始写入文件');
-      const file = await fs.open(filePath, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY);
-      console.log('步骤9: 文件打开成功，fd:', file.fd);
-      
-      await fs.write(file.fd, arrayBuffer);
-      console.log('步骤10: 文件写入成功');
-      
-      await fs.close(file.fd);
-      console.log('步骤11: 文件关闭成功');
-      
-      // 释放资源
-      console.log('步骤12: 释放资源');
-      imageSource.release();
-      pixelMap.release();
-      imagePacker.release();
-      
-      // 显示保存路径信息
-      const pathInfo = dirPath.includes('Documents') ? 'Documents目录' : 
-                      dirPath.includes('Downloads') ? 'Downloads目录' : '应用缓存目录';
-      
-      promptAction.showToast({ 
-        message: `图片已保存到${pathInfo}！`,
-        duration: 3000
-      });
-      
-      console.log('=== 图片保存完成 ===');
-      console.log('保存路径:', filePath);
-      console.log('保存目录:', dirPath);
-      console.log('文件大小:', arrayBuffer.byteLength, 'bytes');
+      // 使用新的保存方法
+      await this.saveScreenshot(this.img, filename);
       
     } catch (error) {
-      console.error('=== 保存图片失败 ===');
+      console.error('=== 保存图片到相册失败 ===');
       console.error('错误类型:', typeof error);
       console.error('错误信息:', error);
       console.error('错误堆栈:', (error as Error).stack);
       
       promptAction.showToast({ 
-        message: '保存失败: ' + (error as Error).message,
-        duration: 2000
+        message: '保存失败: ' + String(error),
+        duration: 3000
       });
     }
   }
@@ -857,6 +950,35 @@ struct ImageDetailPage {
       console.error('错误类型:', typeof error);
       console.error('错误信息:', error);
       console.error('错误堆栈:', (error as Error).stack);
+      return null;
+    }
+  }
+
+  /** 下载受保护图片（自动附带token） */
+  private async downloadImageWithToken(url: string): Promise<ArrayBuffer | null> {
+    try {
+      console.log('=== 开始下载受保护图片 ===');
+      console.log('受保护图片URL:', url);
+      const httpRequest = http.createHttp();
+      const token = await HttpService.getToken();
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/octet-stream'
+      };
+      if (token) {
+        headers['token'] = token;
+      }
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        header: headers
+      });
+      console.log('受保护图片HTTP响应状态码:', response.responseCode);
+      if (response.responseCode === 200) {
+        return response.result as ArrayBuffer;
+      }
+      console.error('受保护图片下载失败，状态码:', response.responseCode);
+      return null;
+    } catch (error) {
+      console.error('下载受保护图片异常:', error);
       return null;
     }
   }
@@ -912,7 +1034,9 @@ struct ImageDetailPage {
   }
 
   build() {
-    Column() {
+    Stack() {
+      // 主内容层
+      Column() {
       // 顶部导航栏
       Row() {
         Text('←')
@@ -928,11 +1052,14 @@ struct ImageDetailPage {
 
         Blank()
 
-        // 保存按钮
-        Text('💾')
-          .fontSize(20)
+        // 更多操作
+        Text('⋯')
+          .fontSize(24)
           .fontColor(Color.Black)
-          .onClick(() => this.saveImage())
+          .onClick(() => {
+            console.log('点击三点按钮，当前 isOwner:', this.isOwner);
+            this.showActions = !this.showActions;
+          })
       }
       .width('100%')
       .height(56)
@@ -960,7 +1087,7 @@ struct ImageDetailPage {
         Scroll() {
           Column({ space: 16 }) {
             // 图片
-            Image(this.imageDetail.imageUrl)
+            Image(this.displayImageUri || this.getDisplayImageUrl())
               .width('100%')
               .height(300)
               .borderRadius(12)
@@ -1193,19 +1320,72 @@ struct ImageDetailPage {
         .height('100%')
       }
 
-      // 底部导航栏
-      BottomNavBar({ currentPage: 'home' })
+        // 底部导航栏
+        BottomNavBar({ currentPage: 'home' })
+      }
+      .width('100%')
+      .height('100%')
+      .linearGradient({
+        direction: GradientDirection.Bottom,
+        colors: [
+          ['#E8F5E8', 0.0],
+          ['#F0F8F0', 0.3],
+          ['#F8FCF8', 0.7],
+          ['#FFFFFF', 1.0]
+        ]
+      })
+
+      // 覆盖层：三点下拉菜单（不占据主布局空间），绝对定位到右上角
+      if (this.showActions) {
+        Column({ space: 8 }) {
+            Text('保存图片')
+              .fontSize(14)
+              .fontColor(Color.Black)
+              .padding({ top: 10, bottom: 10, left: 14, right: 14 })
+              .backgroundColor(Color.White)
+              .borderRadius(8)
+              .onClick(() => { this.saveImage(); this.showActions = false; })
+
+            Text('分享图片')
+              .fontSize(14)
+              .fontColor(Color.Black)
+              .padding({ top: 10, bottom: 10, left: 14, right: 14 })
+              .backgroundColor(Color.White)
+              .borderRadius(8)
+              .onClick(() => { promptAction.showToast({ message: '分享功能开发中' }); this.showActions = false; })
+
+            if (this.isOwner) {
+              Text('删除图片')
+                .fontSize(14)
+                .fontColor('#FF3B30')
+                .padding({ top: 10, bottom: 10, left: 14, right: 14 })
+                .backgroundColor('#FFF5F5')
+                .borderRadius(8)
+                .onClick(async () => {
+                  if (this.imageDetail) {
+                    try {
+                      const res = await ApiService.deleteImage(this.imageDetail.imageId);
+                      if (res.code === 1) {
+                        promptAction.showToast({ message: '删除成功' });
+                        this.showActions = false;
+                        router.back();
+                        return;
+                      }
+                      promptAction.showToast({ message: res.msg || '删除失败' });
+                    } catch (e) {
+                      promptAction.showToast({ message: '删除失败' });
+                    }
+                  }
+                  this.showActions = false;
+                })
+            }
+        }
+        .backgroundColor(Color.White)
+        .borderRadius(12)
+        .shadow({ radius: 8, color: '#22000000', offsetX: 0, offsetY: 2 })
+        .align(Alignment.TopEnd)
+        .margin({ top: 56, right: 16 })
+      }
     }
-    .width('100%')
-    .height('100%')
-    .linearGradient({
-      direction: GradientDirection.Bottom,
-      colors: [
-        ['#E8F5E8', 0.0],
-        ['#F0F8F0', 0.3],
-        ['#F8FCF8', 0.7],
-        ['#FFFFFF', 1.0]
-      ]
-    })
   }
 }

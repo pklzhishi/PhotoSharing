@@ -145,3 +145,12 @@ export class ChangeBookmarkRequestData {
     this.imageId = imageId;
   }
 }
+
+/** 获取评论列表请求（匹配后端 /api/comments/getCommentsList） */
+export class GetCommentsListRequestData {
+  imageId: number;
+
+  constructor(imageId: number) {
+    this.imageId = imageId;
+  }
+}
