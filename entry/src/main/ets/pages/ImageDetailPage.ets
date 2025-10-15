@@ -3,20 +3,15 @@ import promptAction from '@ohos.promptAction';
 import fs from '@ohos.file.fs';
 import image from '@ohos.multimedia.image';
 import http from '@ohos.net.http';
-// import photoAccessHelper from '@ohos.file.photoAccessHelper';
-// import fileIo from '@ohos.file.fileIo';
 import { fileIo } from '@kit.CoreFileKit';
 import { abilityAccessCtrl } from '@kit.AbilityKit';
 import { common } from '@kit.AbilityKit';
-// import { Intent } from '@ohos.ability'; // 可选：用于打开设置页面
 import { fileUri } from '@kit.CoreFileKit';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
-
-
-// 修改后（正确路径）
+import { unifiedDataChannel, uniformTypeDescriptor } from '@kit.ArkData';
+import { BusinessError, pasteboard } from '@kit.BasicServicesKit';
 import { ImageItem } from '../models/Image';
 import { Comment } from '../models/Comment';
-
 import { ApiService } from '../services/ApiService';
 import { Colors } from '../common/Colors';
 import { BottomNavBar } from '../common/BottomNavBar';
@@ -884,6 +879,91 @@ struct ImageDetailPage {
   }
 
   /**
+   * 分享图片 - 显示图片链接供用户复制
+   */
+  async shareImage() {
+    if (!this.imageDetail) {
+      promptAction.showToast({ message: '图片信息不可用' });
+      return;
+    }
+
+    try {
+      // 获取图片的完整URL
+      const imageUrl = this.getDisplayImageUrl();
+      if (!imageUrl) {
+        promptAction.showToast({ message: '图片链接不可用' });
+        return;
+      }
+
+      // 显示分享对话框
+      promptAction.showDialog({
+        title: '分享图片',
+        message: `图片链接：\n${imageUrl}\n\n点击确定复制链接到剪贴板`,
+        buttons: [
+          { text: '取消', color: '#999999' },
+          { text: '复制链接', color: '#4CAF50' }
+        ]
+      }).then((result) => {
+        if (result.index === 1) {
+          // 用户选择复制链接，直接复制到剪贴板
+          this.copyToClipboard(imageUrl);
+        }
+      });
+
+    } catch (error) {
+      console.error('分享图片失败:', error);
+      promptAction.showToast({ 
+        message: '分享失败: ' + String(error),
+        duration: 3000
+      });
+    }
+  }
+
+  /**
+   * 复制文本到剪贴板
+   */
+  async copyToClipboard(text: string) {
+    try {
+      // 构造PlainText数据
+      let plainTextData = new unifiedDataChannel.UnifiedData();
+      let plainText = new unifiedDataChannel.PlainText();
+      
+      // 设置文本内容
+      plainText.details = {
+        Key: 'imageUrl',
+        Value: 'imageUrl',
+      };
+      plainText.textContent = text;
+      plainText.abstract = text;
+      plainTextData.addRecord(plainText);
+      
+      // 设置跨应用分享选项
+      plainTextData.properties.shareOptions = unifiedDataChannel.ShareOptions.CROSS_APP;
+      
+      // 写入系统剪贴板
+      await pasteboard.getSystemPasteboard().setUnifiedData(plainTextData);
+      
+      // 显示成功提示
+      promptAction.showToast({ 
+        message: '链接已复制到剪贴板',
+        duration: 2000
+      });
+
+    } catch (error) {
+      console.error('复制到剪贴板失败:', error);
+      
+      // 如果剪贴板API失败，显示链接供用户手动复制
+      promptAction.showDialog({
+        title: '图片链接',
+        message: `复制失败，请手动复制：\n${text}`,
+        buttons: [
+          { text: '确定', color: '#4CAF50' }
+        ]
+      });
+    }
+  }
+
+  /**
    * 保存图片到相册 - 使用沙箱环境方法
    */
   async saveImage() {
@@ -1367,7 +1447,7 @@ struct ImageDetailPage {
               .padding({ top: 10, bottom: 10, left: 14, right: 14 })
               .backgroundColor(Color.White)
               .borderRadius(8)
-              .onClick(() => { promptAction.showToast({ message: '分享功能开发中' }); this.showActions = false; })
+              .onClick(() => { this.shareImage(); this.showActions = false; })
 
             if (this.isOwner) {
               Text('删除图片')
