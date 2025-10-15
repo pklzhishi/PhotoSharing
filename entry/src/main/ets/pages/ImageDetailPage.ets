@@ -69,6 +69,21 @@ struct ImageDetailPage {
   @State img: PixelMap | null = null; // 用于保存的图片数据
 
   /**
+   * 去掉文件后缀，只显示图片名称
+   */
+  private getDisplayImageName(imageName: string): string {
+    if (!imageName) return '';
+    // 找到最后一个点的位置
+    const lastDotIndex = imageName.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      // 没有后缀，直接返回
+      return imageName;
+    }
+    // 返回点之前的部分
+    return imageName.substring(0, lastDotIndex);
+  }
+
+  /**
    * 保存图片到相册 - 使用沙箱环境方法
    */
   async saveScreenshot(pixelMap: image.PixelMap, filename: string) {
@@ -1104,7 +1119,7 @@ struct ImageDetailPage {
             // 图片信息
             Column({ space: 12 }) {
               // 图片名称
-              Text(this.imageDetail.imageName)
+              Text(this.getDisplayImageName(this.imageDetail.imageName))
                 .fontSize(18)
                 .fontWeight(FontWeight.Bold)
                 .fontColor(Color.Black)

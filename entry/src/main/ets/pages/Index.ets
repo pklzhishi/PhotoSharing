@@ -18,6 +18,21 @@ struct Index {
   @State isSearching: boolean = false;
   @State showSearchInput: boolean = false;
 
+  /**
+   * 去掉文件后缀，只显示图片名称
+   */
+  private getDisplayImageName(imageName: string): string {
+    if (!imageName) return '';
+    // 找到最后一个点的位置
+    const lastDotIndex = imageName.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      // 没有后缀，直接返回
+      return imageName;
+    }
+    // 返回点之前的部分
+    return imageName.substring(0, lastDotIndex);
+  }
+
   aboutToAppear() {
     this.loadImages();
   }
@@ -133,7 +148,7 @@ struct Index {
     Column() {
       // 顶部导航栏
       Row() {
-        Text('图片分享')
+        Text('拾光映画')
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor(Color.Black)
@@ -148,7 +163,7 @@ struct Index {
       }
       .width('100%')
       .height(56)
-      .padding({ left: 16, right: 16 })
+      .padding({ left: 20, right: 20 })
       .backgroundColor(Color.Transparent)
 
       // 搜索输入框
@@ -311,7 +326,7 @@ struct Index {
 
                   // 图片信息
                   Column({ space: 8 }) {
-                    Text(image.imageName)
+                    Text(this.getDisplayImageName(image.imageName))
                       .fontSize(14)
                       .fontWeight(FontWeight.Medium)
                       .fontColor(Color.Black)
@@ -337,7 +352,7 @@ struct Index {
                     }
                   }
                   .width('100%')
-                  .padding({ top: 8, left: 8, right: 8, bottom: 8 })
+                  .padding({ top: 8, left: 8, right: 8, bottom: 5 })
                 }
                 .width('100%')
                 .backgroundColor(Colors.White10)
@@ -349,7 +364,7 @@ struct Index {
           .columnsTemplate('1fr 1fr')
           .rowsGap(12)
           .columnsGap(12)
-          .padding(16)
+          .padding({ top: 3, left: 16, right: 16, bottom: 16 })
           .onScrollIndex(() => {
             // 可以在这里实现分页加载
           })
