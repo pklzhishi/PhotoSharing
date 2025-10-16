@@ -7,7 +7,6 @@ import { ImageItem } from '../models/Image';
 import { Comment } from '../models/Comment';
 import { ApiService } from '../services/ApiService';
 import { Colors } from '../common/Colors';
-import { BottomNavBar } from '../common/BottomNavBar';
 
 // 定义点赞数据接口
 interface LikeData {
@@ -50,6 +49,9 @@ struct ImageDetailPage {
   @State imageId: number = 0;
   @State showCommentInput: boolean = false; // 控制评论输入框显示
   @State isBookmarking: boolean = false; // 控制收藏操作状态
+  @State currentUserId: number = 0; // 当前用户ID
+  @State isImageOwner: boolean = false; // 是否为图片作者
+  @State deletedCommentIds: Set<number> = new Set(); // 已删除的评论ID集合
 
   // 使用全局存储评论数据、点赞状态和收藏状态（更持久）
   private static getGlobalStorage(): Record<string, string> {
@@ -119,6 +121,8 @@ struct ImageDetailPage {
           this.imageDetail = JSON.parse(params.imageData);
           console.log('使用传递的图片数据:', this.imageDetail);
           this.isLoading = false;
+          // 检查是否为图片作者
+          this.checkImageOwnership();
           // 仍然尝试加载评论（如果API存在的话）
           this.loadComments();
         } catch (error) {
@@ -129,6 +133,9 @@ struct ImageDetailPage {
         // 如果没有传递图片数据，尝试从API加载
         this.loadImageDetail();
       }
+      
+      // 获取当前用户信息
+      this.loadCurrentUserInfo();
       
       // 调试：显示当前存储状态
       const storage = ImageDetailPage.getGlobalStorage();
@@ -149,12 +156,72 @@ struct ImageDetailPage {
   }
 
   /**
+   * 获取当前用户信息
+   */
+  async loadCurrentUserInfo() {
+    try {
+      const HttpServiceModule = await import('../services/HttpService');
+      const HttpService = HttpServiceModule.HttpService;
+      const token = await HttpService.getToken();
+      
+      console.log('=== 获取用户信息 ===');
+      console.log('Token状态:', token ? '已获取' : '未获取');
+      
+      if (token) {
+        // 尝试获取用户信息
+        try {
+          const userInfoResponse = await ApiService.getUserInfo();
+          console.log('用户信息API响应:', userInfoResponse);
+          
+          if (userInfoResponse.code === 1 && userInfoResponse.data) {
+            this.currentUserId = userInfoResponse.data.userId || 0;
+            console.log('从API获取的用户ID:', this.currentUserId);
+          } else {
+            console.log('API返回失败，使用默认用户ID');
+            this.currentUserId = 1; // 假设当前用户ID为1
+          }
+        } catch (error) {
+          console.error('获取用户信息失败:', error);
+          // 如果获取用户信息失败，使用默认值
+          this.currentUserId = 1; // 假设当前用户ID为1
+          console.log('使用默认用户ID:', this.currentUserId);
+        }
+      } else {
+        console.log('用户未登录，使用默认用户ID');
+        this.currentUserId = 1; // 即使未登录也使用默认值进行测试
+      }
+      
+      console.log('最终用户ID:', this.currentUserId);
+    } catch (error) {
+      console.error('加载当前用户信息失败:', error);
+      this.currentUserId = 1; // 出错时也使用默认值
+    }
+  }
+
+  /**
+   * 检查是否为图片作者
+   */
+  checkImageOwnership() {
+    if (this.imageDetail && this.currentUserId > 0) {
+      // 假设图片对象中有userId字段表示图片作者ID
+      const imageOwnerId = this.imageDetail.userId || 0;
+      this.isImageOwner = this.currentUserId === imageOwnerId;
+    } else {
+      this.isImageOwner = false;
+    }
+  }
+
+
+  /**
    * 加载图片详情
    */
   async loadImageDetail() {
     this.isLoading = true;
     try {
       console.log('开始加载图片详情，图片ID:', this.imageId);
+      
+      // 先加载已删除的评论ID
+      await this.loadDeletedCommentIds();
       
       // 由于后端可能没有getImageDetail API，我们使用传递过来的图片数据
       if (this.imageDetail) {
@@ -181,6 +248,9 @@ struct ImageDetailPage {
           this.imageDetail.isBookmarked = false;
           this.imageDetail.bookmarkCount = 0;
         }
+        
+        // 检查是否为图片作者
+        this.checkImageOwnership();
       } else {
         console.error('没有图片数据，无法显示详情');
         promptAction.showToast({ message: '图片数据缺失' });
@@ -355,6 +425,8 @@ struct ImageDetailPage {
         createTime: new Date().toISOString()
       };
       
+      console.log('创建新评论，ID:', newComment.commentId, '类型:', typeof newComment.commentId);
+      
       // 先添加到本地列表
       this.comments.unshift(newComment);
       
@@ -381,6 +453,7 @@ struct ImageDetailPage {
 
         if (response.code === 1) {
           promptAction.showToast({ message: '评论成功' });
+          console.log('评论已成功同步到服务器');
         } else {
           console.error('发表评论API失败，响应码:', response.code, '错误信息:', response.msg);
           promptAction.showToast({ message: '评论已保存到本地，但服务器同步失败' });
@@ -403,16 +476,14 @@ struct ImageDetailPage {
    * 删除评论
    */
   async deleteComment(comment: Comment) {
-    if (!comment.commentId) {
-      promptAction.showToast({ message: '评论ID无效' });
-      return;
-    }
+    console.log('=== 删除评论开始 ===');
+    console.log('评论对象:', comment);
+    console.log('评论ID:', comment.commentId, '类型:', typeof comment.commentId);
 
     // 检查是否有token，如果没有则提示用户登录
     const HttpServiceModule = await import('../services/HttpService');
     const HttpService = HttpServiceModule.HttpService;
     const token = await HttpService.getToken();
-    console.log('删除评论 - 当前token状态:', token ? '已登录' : '未登录');
     
     if (!token) {
       promptAction.showDialog({
@@ -437,40 +508,138 @@ struct ImageDetailPage {
       return;
     }
 
-    // 添加简单的确认提示
-    promptAction.showToast({ 
-      message: '正在删除评论...',
-      duration: 1000
-    });
-
-    try {
-      console.log('删除评论，评论ID:', comment.commentId, '图片ID:', this.imageId);
-      
-      const response = await ApiService.deleteComment(comment.commentId, this.imageId);
-      
-      console.log('删除评论API响应:', response);
-      
-      if (response.code === 1) {
-        promptAction.showToast({ message: '删除成功' });
-        
-        // 从本地列表中移除
-        const originalLength = this.comments.length;
-        this.comments = this.comments.filter(c => c.commentId !== comment.commentId);
-        
-        // 保存到本地存储
-        await this.saveCommentsToLocal(this.comments);
-        
-        console.log('评论已从本地列表删除，原数量:', originalLength, '现数量:', this.comments.length);
-      } else {
-        console.error('删除评论失败，响应码:', response.code, '错误信息:', response.msg);
-        promptAction.showToast({ message: response.msg || '删除失败' });
+    // 添加确认对话框
+    promptAction.showDialog({
+      title: '确认删除',
+      message: '确定要删除这条评论吗？',
+      buttons: [
+        {
+          text: '取消',
+          color: '#666666'
+        },
+        {
+          text: '删除',
+          color: '#FF5722'
+        }
+      ]
+    }).then(async (result) => {
+      if (result.index === 1) {
+        // 用户确认删除
+        try {
+          // 显示删除中提示
+          promptAction.showToast({ 
+            message: '正在删除评论...',
+            duration: 1000
+          });
+          
+          console.log('开始删除评论，ID:', comment.commentId);
+          
+          // 尝试调用API删除评论
+          try {
+            // 调试评论ID
+            console.log('=== 评论ID调试 ===');
+            console.log('完整评论对象:', JSON.stringify(comment, null, 2));
+            console.log('评论ID:', comment.commentId);
+            console.log('评论ID类型:', typeof comment.commentId);
+            console.log('评论ID是否为null:', comment.commentId === null);
+            console.log('评论ID是否为undefined:', comment.commentId === undefined);
+            
+            // 详细调试评论对象
+            console.log('=== 评论删除调试 ===');
+            console.log('完整评论对象:', JSON.stringify(comment, null, 2));
+            console.log('评论对象所有字段:', Object.keys(comment));
+            console.log('commentId字段值:', comment.commentId);
+            console.log('commentId字段类型:', typeof comment.commentId);
+            console.log('commentId是否为null:', comment.commentId === null);
+            console.log('commentId是否为undefined:', comment.commentId === undefined);
+            
+            // 尝试从不同字段获取ID
+            let commentId: number | null = null;
+            
+            // 检查commentId字段
+            if (comment.commentId !== null && comment.commentId !== undefined) {
+              commentId = Number(comment.commentId);
+              console.log('使用commentId字段:', commentId);
+            } else {
+              console.log('commentId字段为空，尝试其他字段...');
+              
+              // 通过JSON字符串搜索其他可能的ID字段
+              const commentJson = JSON.stringify(comment);
+              console.log('评论JSON内容:', commentJson);
+              
+              // 搜索可能的ID字段
+              const idPatterns = [
+                /"id"\s*:\s*(\d+)/,
+                /"comment_id"\s*:\s*(\d+)/,
+                /"commentID"\s*:\s*(\d+)/,
+                /"commentId"\s*:\s*(\d+)/
+              ];
+              
+              for (const pattern of idPatterns) {
+                const match = commentJson.match(pattern);
+                if (match) {
+                  commentId = parseInt(match[1], 10);
+                  console.log(`通过正则匹配找到ID: ${match[0]} -> ${commentId}`);
+                  break;
+                }
+              }
+            }
+            
+            if (commentId === null || isNaN(commentId) || commentId <= 0) {
+              console.error('未找到有效的评论ID');
+              console.error('所有字段:', Object.keys(comment));
+              console.error('所有值:', Object.values(comment));
+              promptAction.showToast({ message: '评论ID为空，无法删除' });
+              return;
+            }
+            
+            console.log('最终使用的评论ID:', commentId);
+            
+            const response = await ApiService.deleteComment(commentId);
+            console.log('API删除响应:', response);
+            console.log('响应码:', response.code);
+            console.log('响应消息:', response.msg);
+            console.log('响应数据:', response.data);
+            
+            if (response.code === 1) {
+              console.log('API删除成功');
+              promptAction.showToast({ message: '删除成功' });
+            } else {
+              console.log('API删除失败，响应码:', response.code, '错误信息:', response.msg);
+              promptAction.showToast({ message: '删除失败: ' + (response.msg || '未知错误') });
+              return;
+            }
+          } catch (apiError) {
+            console.error('API删除异常:', apiError);
+            console.error('异常类型:', typeof apiError);
+            console.error('异常详情:', JSON.stringify(apiError));
+            promptAction.showToast({ message: '删除失败，请检查网络连接' });
+            return;
+          }
+          
+          // API删除成功后，从本地列表中移除
+          const originalLength = this.comments.length;
+          this.comments = this.comments.filter(c => {
+            // 使用多种方式匹配要删除的评论
+            if (c.commentId !== null && c.commentId !== undefined && comment.commentId !== null && comment.commentId !== undefined) {
+              return c.commentId !== comment.commentId;
+            }
+            // 如果ID为空，通过内容和图片ID匹配
+            return c.content !== comment.content || c.imageId !== comment.imageId;
+          });
+          
+          // 保存到本地存储
+          await this.saveCommentsToLocal(this.comments);
+          
+          console.log('评论删除完成，原数量:', originalLength, '现数量:', this.comments.length);
+        } catch (error) {
+          console.error('删除评论失败:', error);
+          console.error('错误类型:', typeof error);
+          console.error('错误详情:', JSON.stringify(error));
+          promptAction.showToast({ message: '删除失败，请检查网络连接' });
+        }
       }
-    } catch (error) {
-      console.error('删除评论失败:', error);
-      console.error('错误类型:', typeof error);
-      console.error('错误详情:', JSON.stringify(error));
-      promptAction.showToast({ message: '删除失败，请检查网络连接' });
-    }
+    });
   }
 
   /**
@@ -480,7 +649,7 @@ struct ImageDetailPage {
     try {
       console.log('尝试加载评论，图片ID:', this.imageId);
       
-      // 尝试使用API获取评论列表
+      // 优先从API加载评论（确保获取最新的评论状态）
       try {
         console.log('调用 getImageComments API...');
         const commentsResponse = await ApiService.getImageComments(this.imageId);
@@ -489,19 +658,74 @@ struct ImageDetailPage {
         if (commentsResponse.code === 1) {
           this.comments = commentsResponse.data || [];
           console.log('评论列表加载成功，评论数量:', this.comments.length);
+          
+          // 调试：检查API响应的完整结构
+          console.log('=== API响应完整结构 ===');
+          console.log('完整响应:', JSON.stringify(commentsResponse, null, 2));
+          console.log('响应数据类型:', typeof commentsResponse.data);
+          console.log('响应数据是否为数组:', Array.isArray(commentsResponse.data));
+          
+            // 调试：检查从API加载的评论ID格式
+            if (this.comments.length > 0) {
+              console.log('=== API评论ID调试 ===');
+              this.comments.forEach((comment, index) => {
+                console.log(`评论${index + 1}完整对象:`, JSON.stringify(comment, null, 2));
+                console.log(`评论${index + 1}所有字段:`, Object.keys(comment));
+                console.log(`评论${index + 1}字段值:`, {
+                  commentId: comment.commentId,
+                  commentIdType: typeof comment.commentId,
+                  content: comment.content?.substring(0, 20) + '...',
+                  imageId: comment.imageId,
+                  userId: comment.userId,
+                  username: comment.username
+                });
+                
+                // 通过JSON序列化检查所有字段
+                const commentJson = JSON.stringify(comment);
+                console.log(`评论${index + 1}JSON内容:`, commentJson);
+                
+                // 检查是否包含其他可能的ID字段
+                if (commentJson.includes('"id"')) {
+                  console.log(`评论${index + 1}包含id字段`);
+                }
+                if (commentJson.includes('"comment_id"')) {
+                  console.log(`评论${index + 1}包含comment_id字段`);
+                }
+                if (commentJson.includes('"commentID"')) {
+                  console.log(`评论${index + 1}包含commentID字段`);
+                }
+              });
+            } else {
+              console.log('API返回的评论列表为空');
+            }
+          
+          // 保存到本地存储
+          await this.saveCommentsToLocal(this.comments);
           return;
         } else {
           console.error('获取评论失败，响应码:', commentsResponse.code, '错误信息:', commentsResponse.msg);
         }
       } catch (apiError) {
-        console.error('API调用失败，可能后端没有实现getImageComments接口:', apiError);
+        console.error('API调用失败，尝试从本地存储加载:', apiError);
       }
       
       // 如果API失败，尝试从本地存储加载评论
-      console.log('尝试从本地存储加载评论...');
+      console.log('从本地存储加载评论...');
       const localComments = await this.loadCommentsFromLocal();
       this.comments = localComments;
       console.log('从本地存储加载评论，数量:', this.comments.length);
+      
+      // 调试：检查从本地存储加载的评论ID格式
+      if (this.comments.length > 0) {
+        console.log('=== 本地评论ID调试 ===');
+        this.comments.forEach((comment, index) => {
+          console.log(`本地评论${index + 1}:`, {
+            commentId: comment.commentId,
+            commentIdType: typeof comment.commentId,
+            content: comment.content?.substring(0, 20) + '...'
+          });
+        });
+      }
       
     } catch (error) {
       console.error('加载评论失败:', error);
@@ -665,6 +889,47 @@ struct ImageDetailPage {
       console.error('从本地存储加载收藏状态失败:', error);
     }
     return null;
+  }
+
+  /**
+   * 保存已删除的评论ID到本地存储
+   */
+  async saveDeletedCommentIds(): Promise<void> {
+    try {
+      const deletedKey = `deleted_${this.imageId}`;
+      const storage = ImageDetailPage.getGlobalStorage();
+      storage[deletedKey] = JSON.stringify(Array.from(this.deletedCommentIds));
+      console.log('已删除评论ID已保存到本地存储:', Array.from(this.deletedCommentIds));
+    } catch (error) {
+      console.error('保存已删除评论ID失败:', error);
+    }
+  }
+
+  /**
+   * 从本地存储加载已删除的评论ID
+   */
+  async loadDeletedCommentIds(): Promise<void> {
+    try {
+      const deletedKey = `deleted_${this.imageId}`;
+      const storage = ImageDetailPage.getGlobalStorage();
+      console.log('尝试加载已删除评论ID，key:', deletedKey);
+      console.log('当前存储的所有keys:', Object.keys(storage));
+      
+      const storedDeletedIds = storage[deletedKey];
+      console.log('存储的已删除评论ID数据:', storedDeletedIds);
+      
+      if (storedDeletedIds) {
+        const deletedIds = JSON.parse(storedDeletedIds) as number[];
+        this.deletedCommentIds = new Set(deletedIds);
+        console.log('从本地存储加载已删除评论ID成功:', Array.from(this.deletedCommentIds));
+      } else {
+        this.deletedCommentIds = new Set();
+        console.log('没有找到已删除的评论ID');
+      }
+    } catch (error) {
+      console.error('加载已删除评论ID失败:', error);
+      this.deletedCommentIds = new Set();
+    }
   }
 
   /**
@@ -957,110 +1222,112 @@ struct ImageDetailPage {
         .height('100%')
       } else if (this.imageDetail) {
         // 图片详情内容
-        Scroll() {
-          Column({ space: 16 }) {
-            // 图片
-            Image(this.imageDetail.imageUrl)
-              .width('100%')
-              .height(300)
-              .borderRadius(12)
-              .objectFit(ImageFit.Cover)
-              .backgroundColor(Colors.White20)
-              .gesture(
-                TapGesture({ count: 2 })
-                  .onAction(() => {
-                    console.log('双击图片，开始保存');
-                    this.saveImage();
-                  })
-              )
-
-            // 图片信息
-            Column({ space: 12 }) {
-              // 图片名称
-              Text(this.imageDetail.imageName)
-                .fontSize(18)
-                .fontWeight(FontWeight.Bold)
-                .fontColor(Color.Black)
+        Column() {
+          // 可滚动的内容区域
+          Scroll() {
+            Column({ space: 16 }) {
+              // 图片
+              Image(this.imageDetail.imageUrl)
                 .width('100%')
-                .textAlign(TextAlign.Start)
+                .height(300)
+                .borderRadius(12)
+                .objectFit(ImageFit.Cover)
+                .backgroundColor(Colors.White20)
+                .gesture(
+                  TapGesture({ count: 2 })
+                    .onAction(() => {
+                      console.log('双击图片，开始保存');
+                      this.saveImage();
+                    })
+                )
 
-              // 作者信息
-              Row() {
-                Text(`by ${this.imageDetail.username || '匿名用户'}`)
-                  .fontSize(14)
-                  .fontColor(Colors.Black60)
-
-                Blank()
-
-                Text(this.imageDetail.uploadTime || '')
-                  .fontSize(12)
-                  .fontColor(Colors.Black40)
-              }
-              .width('100%')
-
-              // 图片描述
-              if (this.imageDetail.content) {
-                Text(this.imageDetail.content)
-                  .fontSize(14)
+              // 图片信息
+              Column({ space: 12 }) {
+                // 图片名称
+                Text(this.imageDetail.imageName)
+                  .fontSize(18)
+                  .fontWeight(FontWeight.Bold)
                   .fontColor(Color.Black)
                   .width('100%')
                   .textAlign(TextAlign.Start)
-                  .lineHeight(20)
-              }
 
-              // 互动区域
-              Row({ space: 20 }) {
-                // 点赞按钮
-                Row({ space: 8 }) {
-                  Text(this.imageDetail.isLiked ? '❤️' : '🤍')
-                    .fontSize(20)
-                    .onClick(() => this.toggleLike())
-
-                  Text((this.imageDetail.likeCount || 0).toString())
+                // 作者信息
+                Row() {
+                  Text(`by ${this.imageDetail.username || '匿名用户'}`)
                     .fontSize(14)
                     .fontColor(Colors.Black60)
+
+                  Blank()
+
+                  Text(this.imageDetail.uploadTime || '')
+                    .fontSize(12)
+                    .fontColor(Colors.Black40)
                 }
+                .width('100%')
 
-                // 收藏按钮
-                Row({ space: 8 }) {
-                  Text(this.imageDetail.isBookmarked ? '⭐' : '☆')
-                    .fontSize(20)
-                    .onClick(() => this.toggleBookmark())
-
-                  Text((this.imageDetail.bookmarkCount || 0).toString())
+                // 图片描述
+                if (this.imageDetail.content) {
+                  Text(this.imageDetail.content)
                     .fontSize(14)
-                    .fontColor(Colors.Black60)
+                    .fontColor(Color.Black)
+                    .width('100%')
+                    .textAlign(TextAlign.Start)
+                    .lineHeight(20)
                 }
 
-                // 评论数
-                Row({ space: 8 }) {
-                  Text('💬')
-                    .fontSize(20)
+                // 互动区域
+                Row({ space: 20 }) {
+                  // 点赞按钮
+                  Row({ space: 8 }) {
+                    Text(this.imageDetail.isLiked ? '❤️' : '🤍')
+                      .fontSize(20)
+                      .onClick(() => this.toggleLike())
 
-                  Text((this.comments.length).toString())
-                    .fontSize(14)
-                    .fontColor(Colors.Black60)
+                    Text((this.imageDetail.likeCount || 0).toString())
+                      .fontSize(14)
+                      .fontColor(Colors.Black60)
+                  }
+
+                  // 收藏按钮
+                  Row({ space: 8 }) {
+                    Text(this.imageDetail.isBookmarked ? '⭐' : '☆')
+                      .fontSize(20)
+                      .onClick(() => this.toggleBookmark())
+
+                    Text((this.imageDetail.bookmarkCount || 0).toString())
+                      .fontSize(14)
+                      .fontColor(Colors.Black60)
+                  }
+
+                  // 评论数
+                  Row({ space: 8 }) {
+                    Text('💬')
+                      .fontSize(20)
+
+                    Text((this.comments.length).toString())
+                      .fontSize(14)
+                      .fontColor(Colors.Black60)
+                  }
                 }
+                .width('100%')
+                .justifyContent(FlexAlign.Start)
               }
               .width('100%')
-              .justifyContent(FlexAlign.Start)
-            }
-            .width('100%')
-            .padding(16)
-            .backgroundColor(Color.White)
-            .borderRadius(12)
+              .padding(16)
+              .backgroundColor(Color.White)
+              .borderRadius(12)
 
-            // 评论区域
-            Column({ space: 12 }) {
-              Text('评论')
-                .fontSize(16)
-                .fontWeight(FontWeight.Medium)
-                .fontColor(Color.Black)
-                .alignSelf(ItemAlign.Start)
+              // 评论区域
+              Column({ space: 12 }) {
+                Text('评论')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(Color.Black)
+                  .alignSelf(ItemAlign.Start)
 
-              // 评论列表
-              if (this.comments.length > 0) {
-                Column({ space: 12 }) {
+                // 评论列表
+                if (this.comments.length > 0) {
+                  Column({ space: 12 }) {
                   ForEach(this.comments, (comment: Comment, index: number) => {
                     Column({ space: 8 }) {
                       Row() {
@@ -1083,89 +1350,99 @@ struct ImageDetailPage {
                         .textAlign(TextAlign.Start)
                         .lineHeight(18)
 
-                      // 删除按钮（仅显示自己的评论）
-                      if (comment.userId === 1) { // 假设当前用户ID为1
-                        Row() {
-                          Blank()
-                          Text('删除')
-                            .fontSize(12)
-                            .fontColor('#FF5722')
-                            .padding({ top: 4, bottom: 4, left: 8, right: 8 })
-                            .backgroundColor('#FFF5F5')
-                            .borderRadius(4)
-                            .onClick(() => {
-                              // 直接删除
-                              this.deleteComment(comment);
-                            })
-                        }
-                        .width('100%')
-                        .justifyContent(FlexAlign.End)
-                        .margin({ top: 4 })
+                      // 删除提示
+                      Row() {
+                        Blank()
+                        Text('双击删除')
+                          .fontSize(10)
+                          .fontColor('#999')
+                          .fontStyle(FontStyle.Italic)
                       }
+                      .width('100%')
+                      .justifyContent(FlexAlign.End)
+                      .margin({ top: 4 })
                     }
                     .width('100%')
                     .padding(12)
                     .backgroundColor(Colors.White10)
                     .borderRadius(8)
                     .alignItems(HorizontalAlign.Start)
+                    .gesture(
+                      // 双击删除评论（前端不控制权限，由后端控制）
+                      TapGesture({ count: 2 })
+                        .onAction(() => {
+                          console.log('=== 双击评论被触发 ===');
+                          console.log('评论信息:', comment);
+                          console.log('评论ID:', comment.commentId);
+                          
+                          console.log('开始删除评论，权限由后端控制');
+                          this.deleteComment(comment);
+                        })
+                    )
                   })
-                }
-              } else {
-                Text('暂无评论')
-                  .fontSize(14)
-                  .fontColor(Colors.Black40)
-                  .textAlign(TextAlign.Center)
-                  .width('100%')
-                  .padding(20)
-              }
-
-              // 发表评论区域
-              Column({ space: 8 }) {
-                if (!this.showCommentInput) {
-                  // 显示"发表评论"按钮
-                  Button('发表评论')
-                    .width('100%')
-                    .height(40)
-                    .backgroundColor('#4CAF50')
-                    .fontColor(Color.White)
-                    .borderRadius(8)
-                    .onClick(() => this.toggleCommentInput())
-                } else {
-                  // 显示输入框和发送按钮
-                  Column({ space: 8 }) {
-                    TextArea({ placeholder: '写下你的评论...' })
-                      .width('100%')
-                      .height(80)
-                      .backgroundColor(Color.White)
-                      .borderRadius(8)
-                      .fontSize(14)
-                      .fontColor(Color.Black)
-                      .placeholderColor(Colors.Black40)
-                      .onChange((value: string) => {
-                        this.newComment = value;
-                      })
-
-                    Button(this.isCommenting ? '发送中...' : '发送')
-                      .width('100%')
-                      .height(40)
-                      .backgroundColor('#4CAF50')
-                      .fontColor(Color.White)
-                      .borderRadius(8)
-                      .enabled(!this.isCommenting && this.newComment.trim() !== '')
-                      .onClick(() => this.postComment())
-                    .width('100%')
                   }
+                } else {
+                  Text('暂无评论')
+                    .fontSize(14)
+                    .fontColor(Colors.Black40)
+                    .textAlign(TextAlign.Center)
+                    .width('100%')
+                    .padding(20)
                 }
               }
               .width('100%')
+              .padding(16)
+              .backgroundColor(Color.White)
+              .borderRadius(12)
             }
             .width('100%')
             .padding(16)
-            .backgroundColor(Color.White)
-            .borderRadius(12)
+          }
+          .layoutWeight(1)
+
+          // 固定在底部的发表评论区域
+          Column({ space: 8 }) {
+            if (!this.showCommentInput) {
+              // 显示"发表评论"按钮
+              Button('发表评论')
+                .width('100%')
+                .height(40)
+                .backgroundColor('#4CAF50')
+                .fontColor(Color.White)
+                .borderRadius(8)
+                .onClick(() => this.toggleCommentInput())
+            } else {
+              // 显示输入框和发送按钮
+              Column({ space: 8 }) {
+                TextArea({ placeholder: '写下你的评论...' })
+                  .width('100%')
+                  .height(80)
+                  .backgroundColor(Color.White)
+                  .borderRadius(8)
+                  .fontSize(14)
+                  .fontColor(Color.Black)
+                  .placeholderColor(Colors.Black40)
+                  .onChange((value: string) => {
+                    this.newComment = value;
+                  })
+
+                Button(this.isCommenting ? '发送中...' : '发送')
+                  .width('100%')
+                  .height(40)
+                  .backgroundColor('#4CAF50')
+                  .fontColor(Color.White)
+                  .borderRadius(8)
+                  .enabled(!this.isCommenting && this.newComment.trim() !== '')
+                  .onClick(() => this.postComment())
+                .width('100%')
+              }
+            }
           }
           .width('100%')
           .padding(16)
+          .backgroundColor(Color.White)
+          .borderRadius(12)
+          .margin({ top: 8 })
         }
         .layoutWeight(1)
       } else {
@@ -1192,9 +1469,6 @@ struct ImageDetailPage {
         .width('100%')
         .height('100%')
       }
-
-      // 底部导航栏
-      BottomNavBar({ currentPage: 'home' })
     }
     .width('100%')
     .height('100%')

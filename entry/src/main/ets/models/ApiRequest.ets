@@ -109,10 +109,14 @@ export class PostCommentRequestData {
 
 /** 删除评论请求（匹配后端 /api/comments/deleteComments） */
 export class DeleteCommentRequestData {
-  commentId: JsonValue; // 后端要求的评论ID字段
+  id: number; // 后端要求的评论ID字段，根据OpenAPI规范使用id字段
 
-  constructor(commentId: JsonValue) {
-    this.commentId = commentId;
+  constructor(id: number) {
+    this.id = id;
+    console.log('DeleteCommentRequestData构造函数调用');
+    console.log('传入的ID:', id);
+    console.log('ID类型:', typeof id);
+    console.log('设置的id字段:', this.id);
   }
 }
 
@@ -139,6 +143,15 @@ export class GetImageInformationRequestData {
 
 /** 收藏/取消收藏请求（匹配后端 /api/bookmark/changeBookmark） */
 export class ChangeBookmarkRequestData {
+  imageId: number;
+
+  constructor(imageId: number) {
+    this.imageId = imageId;
+  }
+}
+
+/** 获取评论列表请求（匹配后端 /api/comments/getCommentsList） */
+export class GetCommentsListRequestData {
   imageId: number;
 
   constructor(imageId: number) {

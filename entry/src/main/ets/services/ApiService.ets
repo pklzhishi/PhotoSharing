@@ -2,7 +2,7 @@ import { HttpService } from './HttpService';
 import { LoginRequest, RegisterRequest, ApiResponse, LoginSuccessData, UserInfo } from '../models/User';
 import { ImageItem, ImageUploadRequest, PageRequest, PageResponse } from '../models/Image';
 import { PostCommentRequest, Comment } from '../models/Comment';
-import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody, SearchImageRequestData, GetImageInformationRequestData, ChangeBookmarkRequestData } from '../models/ApiRequest';
+import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody, SearchImageRequestData, GetImageInformationRequestData, ChangeBookmarkRequestData, GetCommentsListRequestData } from '../models/ApiRequest';
 
 /** API服务类（完全适配后端接口） */
 export class ApiService {
@@ -109,10 +109,9 @@ export class ApiService {
   }
 
   /** 删除评论（适配后端 /api/comments/deleteComments） */
-  static async deleteComment(commentId: number, imageId?: number): Promise<ApiResponse<void>> {
-    const params = imageId ? `?imageId=${imageId}` : '';
+  static async deleteComment(commentId: number): Promise<ApiResponse<void>> {
     const requestData = new DeleteCommentRequestData(commentId);
-    return HttpService.post<void, DeleteCommentRequestData>(`/api/comments/deleteComments${params}`, requestData);
+    return HttpService.post<void, DeleteCommentRequestData>('/api/comments/deleteComments', requestData);
   }
 
   /** 删除图片（适配后端 /api/image/deleteImage） */
@@ -152,11 +151,10 @@ export class ApiService {
     return HttpService.post<ImageItem, EmptyRequestData>(url, emptyData);
   }
 
-  /** 获取图片评论列表（适配后端 /api/comments/getComments） */
+  /** 获取图片评论列表（适配后端 /api/comments/getCommentsList） */
   static async getImageComments(imageId: number): Promise<ApiResponse<Comment[]>> {
-    const url = `/api/comments/getComments?imageId=${imageId}`;
-    const emptyData = new EmptyRequestData();
-    return HttpService.post<Comment[], EmptyRequestData>(url, emptyData);
+    const requestData = new GetCommentsListRequestData(imageId);
+    return HttpService.post<Comment[], GetCommentsListRequestData>('/api/comments/getCommentsList', requestData);
   }
 
   /** 获取收藏列表（适配后端 /api/bookmark/getBookmarkList） */
