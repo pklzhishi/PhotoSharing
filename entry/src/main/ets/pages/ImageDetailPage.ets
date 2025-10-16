@@ -7,7 +7,6 @@ import { ImageItem } from '../models/Image';
 import { Comment } from '../models/Comment';
 import { ApiService } from '../services/ApiService';
 import { Colors } from '../common/Colors';
-import { BottomNavBar } from '../common/BottomNavBar';
 
 // 定义点赞数据接口
 interface LikeData {
@@ -33,6 +32,15 @@ interface BookmarkData {
 interface BookmarkStatus {
   isBookmarked: boolean;
   bookmarkCount: number;
+}
+
+// 获取图片基础信息接口的关键字段（关心点赞、收藏状态）
+interface ImageInformationDTO {
+  imageLike?: number;
+  likeCount?: number;
+  isLike?: number; // 后端返回：1=已点赞，0=未点赞
+  isBookmark?: number; // 后端返回：1=已收藏，0=未收藏
+  imageBookmark?: number; // 后端返回：收藏数量
 }
 
 /**
@@ -99,7 +107,7 @@ struct ImageDetailPage {
     return globalStorage.bookmarksStorage;
   }
 
-  aboutToAppear() {
+  async aboutToAppear() {
     // 获取传递的参数
     console.log('ImageDetailPage aboutToAppear 被调用');
     interface RouterParams {
@@ -118,6 +126,9 @@ struct ImageDetailPage {
         try {
           this.imageDetail = JSON.parse(params.imageData);
           console.log('使用传递的图片数据:', this.imageDetail);
+          // 收藏状态由后端接口控制，不再从本地存储恢复
+          // 先拉取基础信息（含 imageLike），记录浏览
+          this.refreshImageInformation();
           this.isLoading = false;
           // 仍然尝试加载评论（如果API存在的话）
           this.loadComments();
@@ -160,27 +171,12 @@ struct ImageDetailPage {
       if (this.imageDetail) {
         console.log('使用传递的图片数据:', this.imageDetail);
         
-        // 尝试从本地存储加载点赞状态
-        const likeStatus = await this.loadLikeStatusFromLocal(this.imageId);
-        if (likeStatus) {
-          console.log('从本地存储恢复点赞状态:', likeStatus);
-          this.imageDetail.isLiked = likeStatus.isLiked;
-          this.imageDetail.likeCount = likeStatus.likeCount;
-        } else {
-          console.log('没有找到本地点赞状态，使用默认值');
-        }
+        // 点赞状态由后端接口控制，不再从本地存储恢复
 
-        // 尝试从本地存储加载收藏状态
-        const bookmarkStatus = await this.loadBookmarkStatusFromLocal(this.imageId);
-        if (bookmarkStatus) {
-          console.log('从本地存储恢复收藏状态:', bookmarkStatus);
-          this.imageDetail.isBookmarked = bookmarkStatus.isBookmarked;
-          this.imageDetail.bookmarkCount = bookmarkStatus.bookmarkCount;
-        } else {
-          console.log('没有找到本地收藏状态，使用默认值');
-          this.imageDetail.isBookmarked = false;
-          this.imageDetail.bookmarkCount = 0;
-        }
+        // 收藏状态由后端接口控制，不再从本地存储恢复
+
+        // 向后端获取图片基础信息并合并（使用 imageLike 作为点赞数）
+        await this.refreshImageInformation();
       } else {
         console.error('没有图片数据，无法显示详情');
         promptAction.showToast({ message: '图片数据缺失' });
@@ -197,6 +193,47 @@ struct ImageDetailPage {
       promptAction.showToast({ message: '加载失败' });
     } finally {
       this.isLoading = false;
+    }
+  }
+
+  /**
+   * 从后端获取图片基础信息并记录浏览，将返回的 imageLike 映射到 likeCount，isLike 映射到 isLiked
+   */
+  private async refreshImageInformation() {
+    try {
+      console.log('调用 getImageInformation 接口，imageId:', this.imageId);
+      const resp = await ApiService.getImageInformation(this.imageId);
+      console.log('getImageInformation 响应:', resp);
+      if (resp && resp.code === 1 && resp.data) {
+        const data: ImageInformationDTO = resp.data as ImageInformationDTO;
+        const likeFromServer = (data.imageLike !== undefined ? data.imageLike : data.likeCount);
+        const serverLikeCount: number | undefined = typeof likeFromServer === 'number' ? likeFromServer : undefined;
+        if (this.imageDetail) {
+          // 用后端的点赞总数覆盖本地点赞数量显示
+          if (serverLikeCount !== undefined && !Number.isNaN(serverLikeCount)) {
+            this.imageDetail.likeCount = serverLikeCount;
+          }
+          // 使用后端返回的 isLike 字段控制点赞状态：1=已点赞，0=未点赞
+          if (typeof data?.isLike === 'number') {
+            this.imageDetail.isLiked = data.isLike === 1;
+            console.log('从后端更新点赞状态，isLike:', data.isLike, 'isLiked:', this.imageDetail.isLiked);
+          }
+          // 使用后端返回的 isBookmark 字段控制收藏状态：1=已收藏，0=未收藏
+          if (typeof data?.isBookmark === 'number') {
+            this.imageDetail.isBookmarked = data.isBookmark === 1;
+            console.log('从后端更新收藏状态，isBookmark:', data.isBookmark, 'isBookmarked:', this.imageDetail.isBookmarked);
+          }
+          // 使用后端返回的 imageBookmark 字段更新收藏数量
+          if (typeof data?.imageBookmark === 'number') {
+            this.imageDetail.bookmarkCount = data.imageBookmark;
+            console.log('从后端更新收藏数量，imageBookmark:', data.imageBookmark);
+          }
+        }
+      } else {
+        console.warn('getImageInformation 返回非成功，保持现有展示');
+      }
+    } catch (e) {
+      console.error('获取图片基础信息失败:', e);
     }
   }
 
@@ -256,12 +293,9 @@ struct ImageDetailPage {
       const oldIsBookmarked: boolean = this.imageDetail.isBookmarked || false;
       const oldBookmarkCount: number = this.imageDetail.bookmarkCount || 0;
       
-      this.imageDetail.isBookmarked = !oldIsBookmarked;
+      this.imageDetail.isBookmarked = !this.imageDetail.isBookmarked;
       this.imageDetail.bookmarkCount = oldBookmarkCount + (this.imageDetail.isBookmarked ? 1 : -1);
-      
-      // 保存到本地存储
-      await this.saveBookmarkStatusToLocal(this.imageDetail.imageId, this.imageDetail.isBookmarked, this.imageDetail.bookmarkCount);
-      
+
       promptAction.showToast({ 
         message: this.imageDetail.isBookmarked ? '收藏成功' : '取消收藏' 
       });
@@ -272,6 +306,8 @@ struct ImageDetailPage {
         console.log('收藏API响应:', response);
         if (response.code === 1) {
           console.log('收藏API调用成功');
+          // 重新获取图片信息以同步后端状态
+          await this.refreshImageInformation();
         } else {
           console.error('收藏API失败，响应码:', response.code, '错误信息:', response.msg);
         }
@@ -1193,8 +1229,7 @@ struct ImageDetailPage {
         .height('100%')
       }
 
-      // 底部导航栏
-      BottomNavBar({ currentPage: 'home' })
+      // 详情页不显示底部导航栏
     }
     .width('100%')
     .height('100%')
