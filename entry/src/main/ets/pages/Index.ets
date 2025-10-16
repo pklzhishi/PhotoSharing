@@ -17,6 +17,24 @@ struct Index {
   @State searchText: string = '';
   @State isSearching: boolean = false;
   @State showSearchInput: boolean = false;
+  @State searchInputOpacity: number = 0;
+  @State searchInputHeight: number = 0;
+  @State isSearchResult: boolean = false; // 标记当前显示的是否为搜索结果
+
+  /**
+   * 去掉文件后缀，只显示图片名称
+   */
+  private getDisplayImageName(imageName: string): string {
+    if (!imageName) return '';
+    // 找到最后一个点的位置
+    const lastDotIndex = imageName.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      // 没有后缀，直接返回
+      return imageName;
+    }
+    // 返回点之前的部分
+    return imageName.substring(0, lastDotIndex);
+  }
 
   aboutToAppear() {
     this.loadImages();
@@ -27,6 +45,7 @@ struct Index {
    */
   async loadImages() {
     this.isLoading = true;
+    this.isSearchResult = false; // 重置搜索状态
     try {
       console.log('开始加载图片数据...');
       const response = await ApiService.getRandomImages(8);
@@ -35,6 +54,7 @@ struct Index {
       if (response.code === 1) {
         this.images = response.data || [];
         console.log('图片加载成功，数量:', this.images.length);
+        console.log('映射后的图片数据:', this.images);
       } else {
         console.error('API返回错误，code:', response.code, 'msg:', response.msg);
         this.images = [];
@@ -60,11 +80,32 @@ struct Index {
    * 切换搜索输入框显示状态
    */
   toggleSearchInput() {
-    this.showSearchInput = !this.showSearchInput;
     if (!this.showSearchInput) {
-      // 如果隐藏搜索框，清空搜索内容并重新加载图片
-      this.searchText = '';
-      this.loadImages();
+      // 显示搜索框
+      this.showSearchInput = true;
+      animateTo({
+        duration: 300,
+        curve: Curve.EaseInOut
+      }, () => {
+        this.searchInputOpacity = 1;
+        this.searchInputHeight = 56;
+      });
+    } else {
+      // 隐藏搜索框
+      animateTo({
+        duration: 300,
+        curve: Curve.EaseInOut
+      }, () => {
+        this.searchInputOpacity = 0;
+        this.searchInputHeight = 0;
+      });
+      
+      // 延迟执行状态重置
+      setTimeout(() => {
+        this.showSearchInput = false;
+        this.searchText = '';
+        this.loadImages();
+      }, 300);
     }
   }
 
@@ -78,6 +119,7 @@ struct Index {
     }
 
     this.isSearching = true;
+    this.isSearchResult = true; // 标记为搜索结果
     try {
       console.log('开始搜索图片，关键词:', this.searchText);
       const response = await ApiService.searchImages(this.searchText);
@@ -92,10 +134,12 @@ struct Index {
       } else {
         console.error('搜索失败，响应码:', response.code, '错误信息:', response.msg);
         promptAction.showToast({ message: '搜索失败，请重试' });
+        this.images = [];
       }
     } catch (error) {
       console.error('搜索异常:', error);
       promptAction.showToast({ message: '搜索失败，请检查网络连接' });
+      this.images = [];
     } finally {
       this.isSearching = false;
     }
@@ -106,8 +150,20 @@ struct Index {
    */
   clearSearch() {
     this.searchText = '';
-    this.showSearchInput = false;
-    this.loadImages();
+    // 使用动画隐藏搜索框
+    animateTo({
+      duration: 300,
+      curve: Curve.EaseInOut
+    }, () => {
+      this.searchInputOpacity = 0;
+      this.searchInputHeight = 0;
+    });
+    
+    // 延迟执行状态重置
+    setTimeout(() => {
+      this.showSearchInput = false;
+      this.loadImages();
+    }, 300);
   }
 
   /**
@@ -132,24 +188,24 @@ struct Index {
   build() {
     Column() {
       // 顶部导航栏
-      Row() {
-        Text('图片分享')
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor(Color.Black)
-
-        Blank()
-
-        // 搜索按钮
-        Image($r('app.media.sousuo'))
-          .width(24)
-          .height(24)
-          .onClick(() => this.toggleSearchInput())
-      }
-      .width('100%')
-      .height(56)
-      .padding({ left: 16, right: 16 })
-      .backgroundColor(Color.Transparent)
+      // Row() {
+      //   Text('拾光映画')
+      //     .fontSize(20)
+      //     .fontWeight(FontWeight.Bold)
+      //     .fontColor(Color.Black)
+      //
+      //   Blank()
+      //
+      //   // 搜索按钮
+      //   Image($r('app.media.sousuo'))
+      //     .width(24)
+      //     .height(24)
+      //     .onClick(() => this.toggleSearchInput())
+      // }
+      // .width('100%')
+      // .height(56)
+      // .padding({ left: 20, right: 20 })
+      // .backgroundColor(Color.Transparent)
 
       // 搜索输入框
       if (this.showSearchInput) {
@@ -189,8 +245,35 @@ struct Index {
             .onClick(() => this.clearSearch())
         }
         .width('100%')
+        .height(this.searchInputHeight)
+        .opacity(this.searchInputOpacity)
         .padding({ left: 16, right: 16, bottom: 8 })
+        .margin({top:15})
+        .transition(TransitionEffect.OPACITY.animation({ duration: 300, curve: Curve.EaseInOut }))
+        .transition(TransitionEffect.scale({}))
+      }else{
+        // 顶部导航栏
+        Row() {
+          Text('图片分享')
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor(Color.Black)
+
+          Blank()
+
+          // 搜索按钮
+          Image($r('app.media.sousuo'))
+            .width(24)
+            .height(24)
+            .onClick(() => this.toggleSearchInput())
+        }
+        .width('100%')
+        .height(56)
+        .padding({ left: 16, right: 16 })
+        .backgroundColor(Color.Transparent)
       }
+
+
 
       // 图片网格
       if (this.isLoading) {
@@ -210,32 +293,47 @@ struct Index {
         .width('100%')
         .layoutWeight(1)
       } else if (this.images.length === 0) {
-        // 无图片状态
+        // 无图片状态 - 区分搜索结果和未登录状态
         Column() {
-          Image($r('app.media.tupian'))
-            .width(80)
-            .height(80)
-            .margin({ bottom: 16 })
-          
-          Text('请登录浏览作品')
-            .fontSize(18)
-            .fontColor(Color.Black)
-            .margin({ bottom: 8 })
-          
-          Text('登录后即可查看精彩内容')
-            .fontSize(14)
-            .fontColor(Colors.Black60)
-            .margin({ bottom: 24 })
-          
-          Button('立即登录')
-            .width(120)
-            .height(40)
-            .backgroundColor('#4CAF50')
-            .fontColor(Color.White)
-            .borderRadius(20)
-            .onClick(() => {
-              router.pushUrl({ url: 'pages/LoginPage' });
-            })
+          if (this.isSearchResult) {
+            // 搜索结果为空
+            Image($r('app.media.nosou'))
+              .width(80)
+              .height(80)
+              .margin({ bottom: 16 })
+
+            Text(`没有找到与"${this.searchText}"相关的图片`)
+              .fontSize(14)
+              .fontColor(Colors.Black60)
+              .margin({ bottom: 24 })
+              .textAlign(TextAlign.Center)
+          } else {
+            // 未登录状态
+            Image($r('app.media.tupian'))
+              .width(80)
+              .height(80)
+              .margin({ bottom: 16 })
+            
+            Text('请登录浏览作品')
+              .fontSize(18)
+              .fontColor(Color.Black)
+              .margin({ bottom: 8 })
+            
+            Text('登录后即可查看精彩内容')
+              .fontSize(14)
+              .fontColor(Colors.Black60)
+              .margin({ bottom: 24 })
+            
+            Button('立即登录')
+              .width(120)
+              .height(40)
+              .backgroundColor('#4CAF50')
+              .fontColor(Color.White)
+              .borderRadius(20)
+              .onClick(() => {
+                router.pushUrl({ url: 'pages/LoginPage' });
+              })
+          }
         }
         .justifyContent(FlexAlign.Center)
         .width('100%')
@@ -311,7 +409,7 @@ struct Index {
 
                   // 图片信息
                   Column({ space: 8 }) {
-                    Text(image.imageName)
+                    Text(this.getDisplayImageName(image.imageName))
                       .fontSize(14)
                       .fontWeight(FontWeight.Medium)
                       .fontColor(Color.Black)
@@ -326,18 +424,18 @@ struct Index {
                       Blank()
 
                       Row({ space: 4 }) {
-                        Text(this.images[index].isLiked ? '❤️' : '🤍')
+                        Text(image.isLike ? '❤️' : '🤍')
                           .fontSize(16)
-                          .onClick(() => this.toggleLike(image))
+                         // .onClick(() => this.toggleLike(image))
 
-                        Text((image.likeCount || 0).toString())
+                        Text((image.imageLike || 0).toString())
                           .fontSize(12)
                           .fontColor(Colors.Black60)
                       }
                     }
                   }
                   .width('100%')
-                  .padding({ top: 8, left: 8, right: 8, bottom: 8 })
+                  .padding({ top: 8, left: 8, right: 8, bottom: 5 })
                 }
                 .width('100%')
                 .backgroundColor(Colors.White10)
@@ -349,7 +447,7 @@ struct Index {
           .columnsTemplate('1fr 1fr')
           .rowsGap(12)
           .columnsGap(12)
-          .padding(16)
+          .padding({ top: 3, left: 16, right: 16, bottom: 16 })
           .onScrollIndex(() => {
             // 可以在这里实现分页加载
           })

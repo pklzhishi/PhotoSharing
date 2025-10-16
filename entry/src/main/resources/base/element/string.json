@@ -43,6 +43,14 @@
     {
       "name": "write_media_permission_reason",
       "value": "应用需要保存图片到相册"
+    },
+    {
+      "name": "read_imagevideo_permission_reason",
+      "value": "应用需要读取图片和视频文件"
+    },
+    {
+      "name": "write_imagevideo_permission_reason",
+      "value": "应用需要写入图片和视频文件到相册"
     }
   ]
 }

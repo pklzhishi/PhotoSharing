@@ -5,6 +5,8 @@
   "main": "",
   "author": "",
   "license": "",
-  "dependencies": {}
+  "dependencies": {
+//    "@kit.BundleKit": ">2.0.0"
+  }
 }
 

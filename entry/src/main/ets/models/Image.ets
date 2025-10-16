@@ -14,6 +14,12 @@ export interface ImageItem {
   bookmarkCount?: number; // 收藏数量
   content?: string; // 图片描述
   commentCount?: number; // 评论数
+  // 后端返回的原始字段
+  imageLike?: number; // 后端点赞数
+  isLike?: number; // 后端是否点赞 (1=已点赞, 0=未点赞)
+  imageTime?: string; // 后端时间字段
+  imageOwner?: number; // 后端图片所有者ID
+  headshotUrl?: string; // 后端头像URL
 }
 
 /**
