@@ -154,3 +154,13 @@ export class GetCommentsListRequestData {
     this.imageId = imageId;
   }
 }
+
+
+
+export class DeleteImageRequestData {
+  imageId: number;
+
+  constructor(imageId: number) {
+    this.imageId = imageId;
+  }
+}

@@ -117,32 +117,8 @@ export class ApiService {
 
   /** 删除图片（适配后端 /api/image/deleteImage） */
   static async deleteImage(imageId: number): Promise<ApiResponse<void>> {
-    const url = `/api/image/deleteImage?imageId=${imageId}`;
-    
-    console.log('=== 删除图片API调用开始 ===');
-    console.log('图片ID:', imageId);
-    console.log('图片ID类型:', typeof imageId);
-    console.log('请求URL:', url);
-    console.log('完整URL:', `http://10.34.18.43:8000${url}`);
-    
-    try {
-      console.log('准备调用HttpService.post...');
-      const result = await HttpService.post<void, null>(url, null);
-      console.log('HttpService.post调用成功，返回结果:', result);
-      return result;
-    } catch (error) {
-      console.error('=== ApiService.deleteImage异常 ===');
-      console.error('ApiService.deleteImage捕获到异常:', error);
-      console.error('异常类型:', typeof error);
-      console.error('异常构造函数:', error.constructor.name);
-      
-      // 将错误转换为Error对象
-      if (error instanceof Error) {
-        throw error;
-      } else {
-        throw new Error(String(error));
-      }
-    }
+    const requestData = new DeleteCommentRequestData(imageId);
+    return HttpService.post<void, DeleteCommentRequestData>('/api/bookmark/deleteImage', requestData);
   }
 
   /** 获取图片详情（适配后端 /api/image/getImageDetail） */
