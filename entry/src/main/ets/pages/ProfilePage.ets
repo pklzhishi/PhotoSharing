@@ -42,6 +42,21 @@ struct ProfilePage {
   @State favoriteCount: number = 0;
   @State historyCount: number = 0;
 
+  /**
+   * 去掉文件后缀，只显示图片名称
+   */
+  private getDisplayImageName(imageName: string): string {
+    if (!imageName) return '';
+    // 找到最后一个点的位置
+    const lastDotIndex = imageName.lastIndexOf('.');
+    if (lastDotIndex === -1) {
+      // 没有后缀，直接返回
+      return imageName;
+    }
+    // 返回点之前的部分
+    return imageName.substring(0, lastDotIndex);
+  }
+
   aboutToAppear() {
     this.loadUserInfo();
     this.loadMyImages(true);
@@ -489,7 +504,7 @@ struct ProfilePage {
 
   build() {
     Column() {
-      // 顶部导航�?
+      // 顶部导航
       if (this.isLoggedIn) {
         // 用户信息卡片 - 更大更好看的样式
         Column({ space: 20 }) {
@@ -588,7 +603,7 @@ struct ProfilePage {
         .padding({ left: 20, right: 20, top: 24, bottom: 24 })
         .backgroundColor(Color.White)
         .borderRadius(20)
-        .margin({ left: 16, right: 16, top: 16, bottom: 32 })
+        .margin({ left: 16, right: 16, top: 16, bottom: 16 })
         .shadow({ radius: 12, color: '#1A000000', offsetX: 0, offsetY: 4 })
 
         // 作品/收藏/浏览记录切换
@@ -728,11 +743,14 @@ struct ProfilePage {
                           .onClick(() => {
                             // 跳转到图片详情页面，传递完整的图片数据
                             console.log('点击图片，准备跳转到详情页面，图片ID:', image.imageId);
+                            console.log('ProfilePage 传递的参数 - imageId:', image.imageId);
+                            console.log('ProfilePage 传递的参数 - isOwner: true');
                             router.pushUrl({ 
                               url: 'pages/ImageDetailPage',
                               params: { 
                                 imageId: image.imageId,
-                                imageData: JSON.stringify(image) // 传递完整的图片数据
+                                imageData: JSON.stringify(image), // 传递完整的图片数据
+                                isOwner: true
                               }
                             }).then(() => {
                               console.log('跳转成功');
@@ -763,7 +781,7 @@ struct ProfilePage {
 
                       // 图片信息
                       Column({ space: 8 }) {
-                        Text(image.imageName)
+                        Text(this.getDisplayImageName(image.imageName))
                           .fontSize(14)
                           .fontWeight(FontWeight.Medium)
                           .fontColor(Color.Black)
@@ -795,10 +813,19 @@ struct ProfilePage {
                     .backgroundColor(Colors.White10)
                     .borderRadius(12)
                     .padding(8)
-                    .onTouch((event: TouchEvent) => {
-                      if (event.type === TouchType.Down) {
-                        this.deleteImage(image);
-                      }
+                    // 单击图片进入详情页
+                    .onClick(() => {
+                      console.log('个人页点击图片进入详情，图片ID:', image.imageId);
+                      console.log('ProfilePage 传递的参数 - imageId:', image.imageId);
+                      console.log('ProfilePage 传递的参数 - isOwner: true');
+                      router.pushUrl({
+                        url: 'pages/ImageDetailPage',
+                        params: {
+                          imageId: image.imageId,
+                          imageData: JSON.stringify(image),
+                          isOwner: true
+                        }
+                      });
                     })
                   }
                 })

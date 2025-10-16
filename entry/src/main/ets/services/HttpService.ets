@@ -25,6 +25,11 @@ export class HttpService {
   private static preferencesStore: preferences.Preferences | null = null;
   private static context: common.Context | null = null;
 
+  /** 获取基础服务地址（供UI层补全资源URL使用） */
+  static getBaseUrl(): string {
+    return HttpService.BASE_URL;
+  }
+
   /** 设置应用上下文 */
   static setContext(context: common.Context): void {
     HttpService.context = context;
