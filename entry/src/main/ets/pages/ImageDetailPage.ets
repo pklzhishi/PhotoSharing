@@ -12,9 +12,11 @@ import { unifiedDataChannel } from '@kit.ArkData';
 import { pasteboard } from '@kit.BasicServicesKit';
 import { ImageItem } from '../models/Image';
 import { Comment } from '../models/Comment';
+import { UserInfo } from '../models/User';
 import { ApiService } from '../services/ApiService';
 import { Colors } from '../common/Colors';
 import { BottomNavBar } from '../common/BottomNavBar';
+import { UserState } from '../services/UserState';
 import { HttpService } from '../services/HttpService';
 
 // 定义点赞数据接口
@@ -74,6 +76,10 @@ struct ImageDetailPage {
   @State showActions: boolean = false; // 右上角更多菜单
   @State isOwner: boolean = false; // 是否为本人发布
   @State img: PixelMap | null = null; // 用于保存的图片数据
+  @State userAvatarUrl: string = ''; // 用户头像URL
+  @State imageAspectRatio: number = 1; // 图片宽高比
+  @State imageDisplayHeight: number = 300; // 图片显示高度，使用更合理的初始值
+  @State isRefreshing: boolean = false; // 控制下拉刷新状态
 
   /**
    * 去掉文件后缀，只显示图片名称
@@ -88,6 +94,26 @@ struct ImageDetailPage {
     }
     // 返回点之前的部分
     return imageName.substring(0, lastDotIndex);
+  }
+
+  /**
+   * 获取显示的用户名
+   */
+  private getDisplayUsername(): string {
+    const currentUser = UserState.getUserInfo();
+    if (currentUser?.username) {
+      return currentUser.username;
+    }
+
+    if (!this.imageDetail) return '匿名用户';
+    
+    // 如果都没有，根据是否为本人发布显示不同信息
+    if (this.isOwner) {
+      return '我';
+    }
+    
+    // 直接使用 username 字段，就像主页一样
+    return this.imageDetail.username || '匿名用户';
   }
 
   /**
@@ -270,6 +296,7 @@ struct ImageDetailPage {
           this.ensureDisplayImageUri();
           // 仍然尝试加载评论（如果API存在的话）
           this.loadComments();
+          this.loadComments();
         } catch (error) {
           console.error('解析图片数据失败:', error);
           this.loadImageDetail();
@@ -281,6 +308,23 @@ struct ImageDetailPage {
 
       // 获取当前用户信息
       this.loadCurrentUserInfo();
+      
+      // 主动获取用户基本信息
+      await this.loadUserBasicInfo();
+      
+      // 监听用户状态变化，更新头像
+      UserState.addListener((userInfo) => {
+        if (userInfo && userInfo.headshotUrl) {
+          this.userAvatarUrl = userInfo.headshotUrl;
+          console.log('图片详情页用户头像URL更新:', this.userAvatarUrl);
+        }
+      });
+      
+      // 初始化时获取用户头像URL
+      const userInfo = UserState.getUserInfo();
+      if (userInfo && userInfo.headshotUrl) {
+        this.userAvatarUrl = userInfo.headshotUrl;
+      }
 
       // 调试：显示当前存储状态
       const storage = ImageDetailPage.getGlobalStorage();
@@ -301,6 +345,50 @@ struct ImageDetailPage {
   }
 
   /**
+   * 加载用户基本信息
+   */
+  async loadUserBasicInfo() {
+    try {
+      // 先检查是否有token
+      const token = await HttpService.getToken();
+      console.log('ImageDetailPage检查用户登录状态，token:', token ? '存在' : '不存在');
+      
+      if (!token) {
+        console.log('用户未登录，不获取用户基本信息');
+        return;
+      }
+
+      console.log('开始获取用户基本信息');
+      const response = await ApiService.getUserBasicInformation();
+      console.log('获取用户基本信息响应:', JSON.stringify(response, null, 2));
+      
+      if (response.code === 1 && response.data) {
+        console.log('用户基本信息获取成功:', response.data);
+        
+        // 更新头像URL
+        if (response.data.headshotUrl) {
+          // 构建完整的头像URL
+          const baseUrl = HttpService.getBaseUrl();
+          this.userAvatarUrl = `${baseUrl}/images/${response.data.headshotUrl}`;
+          console.log('ImageDetailPage用户头像URL:', this.userAvatarUrl);
+          
+          // 更新全局用户状态
+          const userInfo = UserState.getUserInfo();
+          if (userInfo) {
+            userInfo.headshotUrl = this.userAvatarUrl;
+            userInfo.username = response.data.username;
+            UserState.setUserInfo(userInfo);
+          }
+        }
+      } else {
+        console.error('获取用户基本信息失败，响应码:', response.code, '消息:', response.msg);
+      }
+    } catch (error) {
+      console.error('获取用户基本信息失败:', error);
+    }
+  }
+
+  /**
    * 获取当前用户信息
    */
   async loadCurrentUserInfo() {
@@ -313,14 +401,41 @@ struct ImageDetailPage {
       console.log('Token状态:', token ? '已获取' : '未获取');
 
       if (token) {
-        // 尝试获取用户信息
+        // 尝试获取用户基本信息
         try {
-          const userInfoResponse = await ApiService.getUserInfo();
-          console.log('用户信息API响应:', userInfoResponse);
+          const userInfoResponse = await ApiService.getUserBasicInformation();
+          console.log('用户基本信息API响应:', userInfoResponse);
 
           if (userInfoResponse.code === 1 && userInfoResponse.data) {
-            this.currentUserId = userInfoResponse.data.userId || 0;
-            console.log('从API获取的用户ID:', this.currentUserId);
+            // 从用户基本信息中获取用户名和头像
+            const username = userInfoResponse.data.username || '用户';
+            const headshotUrl = userInfoResponse.data.headshotUrl;
+            
+            console.log('从API获取的用户名:', username);
+            console.log('从API获取的头像URL:', headshotUrl);
+            
+            // 更新UserState中的用户信息
+            const currentUserInfo = UserState.getUserInfo();
+            if (currentUserInfo) {
+              currentUserInfo.username = username;
+              if (headshotUrl) {
+                const baseUrl = HttpService.getBaseUrl();
+                currentUserInfo.headshotUrl = `${baseUrl}/images/${headshotUrl}`;
+              }
+              UserState.setUserInfo(currentUserInfo);
+            } else {
+              // 如果UserState中没有用户信息，创建一个新的
+              const newUserInfo: UserInfo = {
+                userId: 1, // 使用默认用户ID
+                username: username,
+                headshotUrl: headshotUrl ? `${HttpService.getBaseUrl()}/images/${headshotUrl}` : '',
+                userAccount: '',
+                telephoneNumber: ''
+              };
+              UserState.setUserInfo(newUserInfo);
+            }
+            
+            console.log('获取的用户信息成功');
           } else {
             console.log('API返回失败，使用默认用户ID');
             this.currentUserId = 1; // 假设当前用户ID为1
@@ -358,6 +473,32 @@ struct ImageDetailPage {
 
 
   /**
+   * 刷新页面数据
+   */
+  async refreshPage() {
+    this.isRefreshing = true;
+    try {
+      console.log('开始刷新页面数据');
+      
+      // 重新获取图片基础信息（点赞、收藏状态等）
+      await this.refreshImageInformation();
+      
+      // 重新加载评论
+      await this.loadComments();
+      
+      // 重新加载用户基本信息
+      await this.loadUserBasicInfo();
+      
+      console.log('页面数据刷新完成');
+    } catch (error) {
+      console.error('刷新页面数据失败:', error);
+      promptAction.showToast({ message: '刷新失败' });
+    } finally {
+      this.isRefreshing = false;
+    }
+  }
+
+  /**
    * 加载图片详情
    */
   async loadImageDetail() {
@@ -391,6 +532,7 @@ struct ImageDetailPage {
         // 检查是否为图片作者
         this.checkImageOwnership();
         // 收藏状态由后端接口控制，不再从本地存储恢复
+
 
         // 向后端获取图片基础信息并合并（使用 imageLike 作为点赞数）
         await this.refreshImageInformation();
@@ -445,6 +587,9 @@ struct ImageDetailPage {
             this.imageDetail.bookmarkCount = data.imageBookmark;
             console.log('从后端更新收藏数量，imageBookmark:', data.imageBookmark);
           }
+          
+          // 注意：ImageInformationDTO 接口中没有 username 字段
+          // 用户名信息应该从传递的图片数据中获取，不需要从后端更新
         }
       } else {
         console.warn('getImageInformation 返回非成功，保持现有展示');
@@ -481,12 +626,54 @@ struct ImageDetailPage {
         console.log('采用公开图片地址用于展示:', publicUrl);
       }
 
+      // 先设置一个合理的初始高度，避免布局跳动
+      this.setInitialImageHeight();
+
       // 同时加载图片数据到 PixelMap 用于保存
       await this.loadImageForSave();
     } catch (e) {
       console.error('ensureDisplayImageUri 失败:', e);
       this.displayImageUri = '';
     }
+  }
+
+  /**
+   * 设置图片初始高度，基于常见宽高比进行估算
+   */
+  private setInitialImageHeight() {
+    // 根据图片名称或类型进行初步估算
+    const imageName = this.imageDetail?.imageName || '';
+    const imageUrl = this.imageDetail?.imageUrl || '';
+    
+    // 基于图片URL或名称进行智能估算
+    let estimatedRatio = 1; // 默认正方形
+    
+    // 检查URL中是否包含尺寸信息
+    const sizeMatch = imageUrl.match(/(\d+)x(\d+)/i);
+    if (sizeMatch) {
+      const width = parseInt(sizeMatch[1]);
+      const height = parseInt(sizeMatch[2]);
+      estimatedRatio = width / height;
+    }
+    // 检查文件名中的提示
+    else if (imageName.toLowerCase().includes('landscape') || imageName.toLowerCase().includes('wide') || imageName.toLowerCase().includes('panorama')) {
+      estimatedRatio = 1.5; // 横向图片
+    }
+    else if (imageName.toLowerCase().includes('portrait') || imageName.toLowerCase().includes('tall') || imageName.toLowerCase().includes('vertical')) {
+      estimatedRatio = 0.75; // 纵向图片
+    }
+    else if (imageName.toLowerCase().includes('square')) {
+      estimatedRatio = 1; // 正方形
+    }
+    
+    // 根据估算的宽高比计算高度
+    const referenceWidth = 360;
+    this.imageDisplayHeight = referenceWidth / estimatedRatio;
+    
+    // 限制在合理范围内
+    this.imageDisplayHeight = Math.max(200, Math.min(500, this.imageDisplayHeight));
+    
+    console.log('估算图片宽高比:', estimatedRatio, '设置初始高度:', this.imageDisplayHeight);
   }
 
   /**
@@ -504,6 +691,27 @@ struct ImageDetailPage {
       if (imageData) {
         const imageSource = image.createImageSource(imageData);
         this.img = await imageSource.createPixelMap();
+        
+        // 计算图片宽高比和显示高度
+        if (this.img) {
+          const imageInfo = await this.img.getImageInfo();
+          this.imageAspectRatio = imageInfo.size.width / imageInfo.size.height;
+          
+          // 根据图片实际尺寸计算显示高度
+          // 假设图片宽度为屏幕宽度（例如360vp），计算对应高度
+          const referenceWidth = 360; // 假设一个参考宽度，例如手机屏幕宽度
+          const maxHeight = 600; // 最大显示高度
+          const minHeight = 200; // 最小显示高度
+          
+          this.imageDisplayHeight = referenceWidth / this.imageAspectRatio;
+          
+          // 限制高度在最小和最大范围内
+          this.imageDisplayHeight = Math.max(minHeight, Math.min(maxHeight, this.imageDisplayHeight));
+          
+          console.log('图片宽高比:', this.imageAspectRatio);
+          console.log('计算出的显示高度:', this.imageDisplayHeight);
+        }
+        
         imageSource.release();
         console.log('图片数据加载成功，可用于保存');
       } else {
@@ -660,14 +868,20 @@ struct ImageDetailPage {
       // 先保存评论内容，避免在API调用后丢失
       const commentContent = this.newComment.trim();
 
+      // 获取当前用户信息
+      const currentUserInfo = UserState.getUserInfo();
+      const currentUsername = currentUserInfo?.username || '用户';
+      const currentUserId = currentUserInfo?.userId || 1;
+
       // 创建新的评论对象
       const newComment: Comment = {
         commentId: Date.now(), // 使用时间戳作为临时ID
         content: commentContent,
         imageId: this.imageId,
-        userId: 1, // 假设当前用户ID为1，实际应该从登录状态获取
-        username: '我', // 当前用户名
-        createTime: new Date().toISOString()
+        userId: currentUserId, // 使用当前用户ID
+        username: currentUsername, // 使用当前用户名
+        createTime: new Date().toISOString(),
+        userAvatarUrl: this.userAvatarUrl // 添加当前用户头像URL
       };
 
       console.log('创建新评论，ID:', newComment.commentId, '类型:', typeof newComment.commentId);
@@ -699,6 +913,10 @@ struct ImageDetailPage {
         if (response.code === 1) {
           promptAction.showToast({ message: '评论成功' });
           console.log('评论已成功同步到服务器');
+          
+          // 注意：postComment API返回的是void，不包含commentId
+          // 如果需要获取服务器返回的commentId，需要修改API接口或使用其他方法
+          console.log('评论已成功保存到服务器，但无法获取服务器返回的评论ID');
         } else {
           console.error('发表评论API失败，响应码:', response.code, '错误信息:', response.msg);
           promptAction.showToast({ message: '评论已保存到本地，但服务器同步失败' });
@@ -801,41 +1019,39 @@ struct ImageDetailPage {
             // 尝试从不同字段获取ID
             let commentId: number | null = null;
 
-            // 检查commentId字段
-            if (comment.commentId !== null && comment.commentId !== undefined) {
+            // 优先使用服务器返回的id字段
+            if (comment.id !== null && comment.id !== undefined) {
+              commentId = Number(comment.id);
+              console.log('使用id字段:', commentId);
+            } else if (comment.commentId !== null && comment.commentId !== undefined) {
               commentId = Number(comment.commentId);
               console.log('使用commentId字段:', commentId);
             } else {
-              console.log('commentId字段为空，尝试其他字段...');
-
-              // 通过JSON字符串搜索其他可能的ID字段
-              const commentJson = JSON.stringify(comment);
-              console.log('评论JSON内容:', commentJson);
-
-              // 搜索可能的ID字段
-              const idPatterns = [
-                /"id"\s*:\s*(\d+)/,
-                /"comment_id"\s*:\s*(\d+)/,
-                /"commentID"\s*:\s*(\d+)/,
-                /"commentId"\s*:\s*(\d+)/
-              ];
-
-              for (const pattern of idPatterns) {
-                const match = commentJson.match(pattern);
-                if (match) {
-                  commentId = parseInt(match[1], 10);
-                  console.log(`通过正则匹配找到ID: ${match[0]} -> ${commentId}`);
-                  break;
-                }
-              }
+              console.log('所有ID字段都为空，尝试其他方法...');
+              console.log('评论对象:', JSON.stringify(comment, null, 2));
             }
 
             if (commentId === null || isNaN(commentId) || commentId <= 0) {
               console.error('未找到有效的评论ID');
               console.error('所有字段:', Object.keys(comment));
               console.error('所有值:', Object.values(comment));
-              promptAction.showToast({ message: '评论ID为空，无法删除' });
-              return;
+              
+              // 如果无法获取有效的评论ID，尝试通过内容匹配删除
+              console.log('尝试通过内容匹配删除评论');
+              const originalLength = this.comments.length;
+              this.comments = this.comments.filter(c => {
+                return c.content !== comment.content || c.imageId !== comment.imageId;
+              });
+              
+              if (this.comments.length < originalLength) {
+                console.log('通过内容匹配成功删除评论');
+                await this.saveCommentsToLocal(this.comments);
+                promptAction.showToast({ message: '评论已删除' });
+                return;
+              } else {
+                promptAction.showToast({ message: '评论ID为空，无法删除' });
+                return;
+              }
             }
 
             console.log('最终使用的评论ID:', commentId);
@@ -902,6 +1118,64 @@ struct ImageDetailPage {
 
         if (commentsResponse.code === 1) {
           this.comments = commentsResponse.data || [];
+          
+          // 为评论添加头像信息
+          this.comments = this.comments.map(comment => {
+            console.log('处理评论:', {
+              id: comment.id,
+              commentId: comment.commentId,
+              username: comment.username,
+              userId: comment.userId,
+              currentUserId: this.currentUserId,
+              headshotUrl: comment.headshotUrl,
+              userAvatarUrl: comment.userAvatarUrl,
+              currentUserAvatarUrl: this.userAvatarUrl
+            });
+            
+            // 优先使用服务器返回的头像URL
+            let finalAvatarUrl = comment.headshotUrl || comment.userAvatarUrl;
+            
+            // 检查评论的头像URL是否有效（服务器返回的是 "http://.../images/null"）
+            const isCommentAvatarInvalid = !finalAvatarUrl ||
+                                         (typeof finalAvatarUrl === 'string' && finalAvatarUrl.trim() === '') ||
+                                         (typeof finalAvatarUrl === 'string' && finalAvatarUrl.toLowerCase() === 'null') ||
+                                         (typeof finalAvatarUrl === 'string' && finalAvatarUrl.toLowerCase() === 'undefined') ||
+                                         (typeof finalAvatarUrl === 'string' && finalAvatarUrl.includes('/images/null'));
+            
+            // 如果评论的头像无效/缺失，且当前用户有头像，则使用当前用户头像作为备用
+            if (isCommentAvatarInvalid && this.userAvatarUrl) {
+              finalAvatarUrl = this.userAvatarUrl;
+              console.log('为评论ID:', comment.id || comment.commentId, '添加当前用户头像URL (fallback):', finalAvatarUrl);
+            }
+            // 如果是当前用户的评论，确保使用当前用户头像
+            else if (comment.userId === this.currentUserId || 
+                     comment.username === '我' || 
+                     comment.username === '当前用户') {
+              finalAvatarUrl = this.userAvatarUrl;
+              console.log('为当前用户评论ID:', comment.id || comment.commentId, '添加当前用户头像URL:', finalAvatarUrl);
+            }
+            // 如果评论有头像URL但不是完整URL，尝试构建完整URL
+            else if (finalAvatarUrl && !finalAvatarUrl.startsWith('http')) {
+              const baseUrl = HttpService.getBaseUrl();
+              finalAvatarUrl = `${baseUrl}/images/${finalAvatarUrl}`;
+              console.log('为评论ID:', comment.id || comment.commentId, '构建完整头像URL:', finalAvatarUrl);
+            }
+            
+            const updatedComment: Comment = {
+              id: comment.id,
+              commentId: comment.commentId,
+              content: comment.content,
+              imageId: comment.imageId || this.imageId,
+              userId: comment.userId,
+              username: comment.username,
+              createTime: comment.createTime,
+              commentsTime: comment.commentsTime,
+              userAvatarUrl: finalAvatarUrl,
+              headshotUrl: comment.headshotUrl
+            };
+            return updatedComment;
+          });
+          
           console.log('评论列表加载成功，评论数量:', this.comments.length);
 
           // 调试：检查API响应的完整结构
@@ -1265,6 +1539,79 @@ struct ImageDetailPage {
   /**
    * 保存图片到相册 - 使用沙箱环境方法
    */
+  // async saveImage() {
+  //   if (!this.img) {
+  //     promptAction.showToast({ message: '图片数据未准备好，请稍后再试' });
+  //     return;
+  //   }
+  //
+  //   // 首先检查权限，如果权限被拒绝，显示对话框让用户重新授权
+  //   if (!await this.checkPermission()) {
+  //     promptAction.showDialog({
+  //       title: '需要相册权限',
+  //       message: '保存图片需要相册权限，是否重新申请权限？',
+  //       buttons: [
+  //         {
+  //           text: '取消',
+  //           color: '#666666'
+  //         },
+  //         {
+  //           text: '重新申请',
+  //           color: '#4CAF50'
+  //         }
+  //       ]
+  //     }).then(async (result) => {
+  //       if (result.index === 1) {
+  //         // 用户选择重新申请权限
+  //         console.log('用户选择重新申请权限');
+  //         const hasPermission = await this.checkPermission();
+  //         console.log('重新申请权限结果:', hasPermission);
+  //
+  //         if (hasPermission) {
+  //           // 权限获取成功，继续保存图片
+  //           console.log('权限获取成功，开始保存图片');
+  //           await this.performSaveImage();
+  //         } else {
+  //           console.log('权限申请被拒绝');
+  //           // 显示更详细的错误信息和解决方案
+  //           promptAction.showDialog({
+  //             title: '权限申请被拒绝',
+  //             message: '无法获取相册权限，请检查应用权限设置。\n\n解决方案：\n1. 在设置中手动开启相册权限\n2. 或者重新尝试申请权限',
+  //             buttons: [
+  //               {
+  //                 text: '取消',
+  //                 color: '#666666'
+  //               },
+  //               {
+  //                 text: '再次尝试',
+  //                 color: '#4CAF50'
+  //               }
+  //             ]
+  //           }).then(async (retryResult) => {
+  //             if (retryResult.index === 1) {
+  //               // 用户选择再次尝试
+  //               console.log('用户选择再次尝试申请权限');
+  //               const retryPermission = await this.checkPermission();
+  //               if (retryPermission) {
+  //                 await this.performSaveImage();
+  //               } else {
+  //                 promptAction.showToast({
+  //                   message: '权限申请多次被拒绝，请手动在设置中开启相册权限',
+  //                   duration: 4000
+  //                 });
+  //               }
+  //             }
+  //           });
+  //         }
+  //       }
+  //     });
+  //     return;
+  //   }
+  //
+  //   // 权限获取成功，直接保存图片
+  //   await this.performSaveImage();
+  // }
+
   async saveImage() {
     if (!this.img) {
       promptAction.showToast({ message: '图片数据未准备好，请稍后再试' });
@@ -1282,6 +1629,47 @@ struct ImageDetailPage {
 
     try {
       console.log('=== 开始保存图片到相册 ===');
+
+      // 显示保存中提示
+      promptAction.showToast({
+        message: '正在保存图片到相册...',
+        duration: 1000
+      });
+
+      // 生成文件名
+      const timestamp = new Date().getTime();
+      const filename = `PhotoSharing_${timestamp}`;
+
+      // 使用新的保存方法
+      await this.saveScreenshot(this.img, filename);
+
+    } catch (error) {
+      console.error('=== 保存图片到相册失败 ===');
+      console.error('错误类型:', typeof error);
+      console.error('错误信息:', error);
+      console.error('错误堆栈:', (error as Error).stack);
+
+      promptAction.showToast({
+        message: '保存失败: ' + String(error),
+        duration: 3000
+      });
+    }
+  }
+
+
+
+  /**
+   * 执行保存图片的具体操作
+   */
+  async performSaveImage() {
+    try {
+      console.log('=== 开始保存图片到相册 ===');
+
+      // 检查图片数据是否存在
+      if (!this.img) {
+        promptAction.showToast({ message: '图片数据未准备好，请稍后再试' });
+        return;
+      }
 
       // 显示保存中提示
       promptAction.showToast({
@@ -1421,6 +1809,65 @@ struct ImageDetailPage {
   }
 
   /**
+   * 显示删除图片确认对话框
+   */
+  showDeleteConfirmation() {
+    if (!this.imageDetail) {
+      promptAction.showToast({ message: '图片信息不可用' });
+      return;
+    }
+
+    promptAction.showDialog({
+      title: '确认删除',
+      message: '确定要删除这张图片吗？删除后将无法恢复。',
+      buttons: [
+        {
+          text: '取消',
+          color: '#666666'
+        },
+        {
+          text: '删除',
+          color: '#FF3B30'
+        }
+      ]
+    }).then(async (result) => {
+      if (result.index === 1) {
+        // 用户确认删除
+        await this.deleteImage();
+      }
+    });
+  }
+
+  /**
+   * 执行删除图片操作
+   */
+  async deleteImage() {
+    if (!this.imageDetail) {
+      promptAction.showToast({ message: '图片信息不可用' });
+      return;
+    }
+
+    try {
+      // 显示删除中提示
+      promptAction.showToast({
+        message: '正在删除图片...',
+        duration: 1000
+      });
+
+      const res = await ApiService.deleteImage(this.imageDetail.imageId);
+      if (res.code === 1) {
+        promptAction.showToast({ message: '删除成功' });
+        router.back();
+      } else {
+        promptAction.showToast({ message: res.msg || '删除失败' });
+      }
+    } catch (e) {
+      console.error('删除图片失败:', e);
+      promptAction.showToast({ message: '删除失败，请检查网络连接' });
+    }
+  }
+
+  /**
    * 返回
    */
   goBack() {
@@ -1431,18 +1878,33 @@ struct ImageDetailPage {
     Stack() {
       // 主内容层
       Column() {
-        // 顶部导航栏
-        Row() {
+        // 顶部导航栏 - 包含用户信息
+        Row({ space: 12 }) {
           Text('←')
             .fontSize(24)
             .fontColor(Color.Black)
             .onClick(() => this.goBack())
 
-          Text('图片详情')
-            .fontSize(18)
-            .fontWeight(FontWeight.Bold)
+          // 用户头像
+          if (this.userAvatarUrl) {
+            Image(this.userAvatarUrl)
+              .width(32)
+              .height(32)
+              .borderRadius(16)
+              .objectFit(ImageFit.Cover)
+          } else {
+            Image($r('app.media.startIcon'))
+              .width(32)
+              .height(32)
+              .borderRadius(16)
+              .objectFit(ImageFit.Cover)
+          }
+
+          // 用户名称
+          Text(this.getDisplayUsername())
+            .fontSize(16)
+            .fontWeight(FontWeight.Medium)
             .fontColor(Color.Black)
-            .margin({ left: 16 })
 
           Blank()
 
@@ -1459,6 +1921,7 @@ struct ImageDetailPage {
         .height(56)
         .padding({ left: 16, right: 16 })
         .backgroundColor(Color.Transparent)
+        .margin({ bottom: 0 })
 
         if (this.isLoading) {
           // 加载中状态
@@ -1477,242 +1940,201 @@ struct ImageDetailPage {
           .width('100%')
           .flexGrow(1)
         } else if (this.imageDetail) {
-          // 图片详情内容
-          Column() {
-            // 可滚动的内容区域
+          // 可滚动的内容区域（支持下拉刷新）
+          Refresh({ refreshing: this.isRefreshing }) {
             Scroll() {
-              Column({ space: 16 }) {
-                // 图片
-                Image(this.displayImageUri || this.getDisplayImageUrl())
-                  .width('100%')
-                  .height(300)
-                  .borderRadius(12)
-                  .objectFit(ImageFit.Cover)
-                  .backgroundColor(Colors.White20)
-                  .gesture(
-                    TapGesture({ count: 2 })
-                      .onAction(() => {
-                        console.log('双击图片，开始保存');
-                        this.saveImage();
-                      })
-                  )
+            Column({ space: 0 }) {
+              // 图片内容 - 按原大小显示
+              Image(this.displayImageUri || this.getDisplayImageUrl())
+                .width('100%')
+                .objectFit(ImageFit.Contain)
+                .backgroundColor(Colors.White20)
+                .margin({ top: 0 })
+                .gesture(
+                  TapGesture({ count: 2 })
+                    .onAction(() => {
+                      console.log('双击图片，开始保存');
+                      this.saveImage();
+                    })
+                )
+              
+              // 提示文本
+              Text('双击图片保存到相册')
+                .fontSize(12)
+                .fontColor(Colors.Black60)
+                .textAlign(TextAlign.Center)
+                .width('100%')
+                .padding({ top: 8, bottom: 8 })
+              // 图片标题
+              Text(this.getDisplayImageName(this.imageDetail.imageName))
+                .fontSize(18)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(Color.Black)
+                .width('100%')
+                .textAlign(TextAlign.Start)
+                .padding({ left: 16, right: 16, top: 16, bottom: 8 })
+                .backgroundColor(Color.White)
 
-                // 图片信息
-                Column({ space: 12 }) {
-                  // 图片名称
-                  Text(this.getDisplayImageName(this.imageDetail.imageName))
-                    .fontSize(18)
-                    .fontWeight(FontWeight.Bold)
+              // 图片详情描述
+              if (this.imageDetail.content) {
+                Text(this.imageDetail.content)
+                  .fontSize(16)
+                  .fontColor(Color.Black)
+                  .width('100%')
+                  .textAlign(TextAlign.Start)
+                  .lineHeight(24)
+                  .padding({ left: 16, right: 16, bottom: 16 })
+                  .backgroundColor(Color.White)
+              }
+
+              // 互动区域
+              Row({ space: 20 }) {
+                // 点赞按钮
+                Row({ space: 8 }) {
+                  Text(this.imageDetail.isLiked ? '❤️' : '🤍')
+                    .fontSize(24)
+                    .onClick(() => this.toggleLike())
+
+                  Text((this.imageDetail.likeCount || 0).toString())
+                    .fontSize(16)
+                    .fontColor(Colors.Black60)
+                }
+
+                // 收藏按钮
+                Row({ space: 8 }) {
+                  Text(this.imageDetail.isBookmarked ? '⭐' : '☆')
+                    .fontSize(24)
+                    .onClick(() => this.toggleBookmark())
+
+                  Text((this.imageDetail.bookmarkCount || 0).toString())
+                    .fontSize(16)
+                    .fontColor(Colors.Black60)
+                }
+
+                // 评论按钮
+                Row({ space: 8 }) {
+                  Text('💬')
+                    .fontSize(24)
+
+                  Text((this.comments.length).toString())
+                    .fontSize(16)
+                    .fontColor(Colors.Black60)
+                }
+
+                Blank()
+
+                // 分享按钮
+                Text('📤')
+                  .fontSize(24)
+                  .onClick(() => this.shareImage())
+              }
+              .width('100%')
+              .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+              .backgroundColor(Color.White)
+
+              // 评论区域
+              Column({ space: 12 }) {
+                // 评论标题
+                Row() {
+                  Text(`共${this.comments.length}条评论`)
+                    .fontSize(16)
+                    .fontWeight(FontWeight.Medium)
                     .fontColor(Color.Black)
-                    .width('100%')
-                    .backgroundColor(Colors.White20)
-                    .borderRadius(12)
 
-                  // 图片信息
-                  Column({ space: 12 }) {
-                    // 图片名称
-                    Text(this.imageDetail.imageName)
-                      .fontSize(18)
-                      .fontWeight(FontWeight.Bold)
-                      .fontColor(Color.Black)
-                      .width('100%')
-                      .textAlign(TextAlign.Start)
-
-                    // 作者信息
-                    Row() {
-                      Text(`by ${this.imageDetail.username || '匿名用户'}`)
-                        .fontSize(14)
-                        .fontColor(Colors.Black60)
-
-                      Blank()
-
-                      Text(this.imageDetail.uploadTime || '')
-                        .fontSize(12)
-                        .fontColor(Colors.Black40)
-                    }
-                    .width('100%')
-
-                    // 图片描述
-                    if (this.imageDetail.content) {
-                      Text(this.imageDetail.content)
-                        .fontSize(14)
-                        .fontColor(Color.Black)
-                        .width('100%')
-                        .textAlign(TextAlign.Start)
-                        .lineHeight(20)
-                    }
-
-                    // 互动区域
-                    Row({ space: 20 }) {
-                      // 点赞按钮
-                      Row({ space: 8 }) {
-                        Text(this.imageDetail.isLiked ? '❤️' : '🤍')
-                          .fontSize(20)
-                          .onClick(() => this.toggleLike())
-
-                        Text((this.imageDetail.likeCount || 0).toString())
-                          .fontSize(14)
-                          .fontColor(Colors.Black60)
-                      }
-
-                      // 收藏按钮
-                      Row({ space: 8 }) {
-                        Text(this.imageDetail.isBookmarked ? '⭐' : '☆')
-                          .fontSize(20)
-                          .onClick(() => this.toggleBookmark())
-
-                        Text((this.imageDetail.bookmarkCount || 0).toString())
-                          .fontSize(14)
-                          .fontColor(Colors.Black60)
-                      }
-
-                      // 评论数
-                      Row({ space: 8 }) {
-                        Text('💬')
-                          .fontSize(20)
-
-                        Text((this.comments.length).toString())
-                          .fontSize(14)
-                          .fontColor(Colors.Black60)
-                      }
-                    }
-                    .width('100%')
-                    .justifyContent(FlexAlign.Start)
-                  }
-                  .width('100%')
-                  .padding(16)
-                  .backgroundColor(Color.White)
-                  .borderRadius(12)
-
-                  // 评论区域
-                  Column({ space: 12 }) {
-                    Text('评论')
-                      .fontSize(16)
-                      .fontWeight(FontWeight.Medium)
-                      .fontColor(Color.Black)
-                      .alignSelf(ItemAlign.Start)
-
-                    // 评论列表
-                    if (this.comments.length > 0) {
-                      Column({ space: 12 }) {
-                        ForEach(this.comments, (comment: Comment, index: number) => {
-                          Column({ space: 8 }) {
-                            Row() {
-                              Text(comment.username || '匿名用户')
-                                .fontSize(12)
-                                .fontColor(Colors.Black60)
-
-                              Blank()
-
-                              Text(this.formatTime(comment.createTime))
-                                .fontSize(12)
-                                .fontColor(Colors.Black40)
-                            }
-                            .width('100%')
-
-                            Text(comment.content)
-                              .fontSize(14)
-                              .fontColor(Color.Black)
-                              .width('100%')
-                              .textAlign(TextAlign.Start)
-                              .lineHeight(18)
-
-                            // 删除提示
-                            Row() {
-                              Blank()
-                              Text('双击删除')
-                                .fontSize(10)
-                                .fontColor('#999')
-                                .fontStyle(FontStyle.Italic)
-                            }
-                            .width('100%')
-                            .justifyContent(FlexAlign.End)
-                            .margin({ top: 4 })
-                          }
-                          .width('100%')
-                          .padding(12)
-                          .backgroundColor(Colors.White10)
-                          .borderRadius(8)
-                          .alignItems(HorizontalAlign.Start)
-                          .gesture(
-                            // 双击删除评论（前端不控制权限，由后端控制）
-                            TapGesture({ count: 2 })
-                              .onAction(() => {
-                                console.log('=== 双击评论被触发 ===');
-                                console.log('评论信息:', comment);
-                                console.log('评论ID:', comment.commentId);
-
-                                console.log('开始删除评论，权限由后端控制');
-                                this.deleteComment(comment);
-                              })
-                          )
-                        })
-                      }
-                    } else {
-                      Text('暂无评论')
-                        .fontSize(14)
-                        .fontColor(Colors.Black40)
-                        .textAlign(TextAlign.Center)
-                        .width('100%')
-                        .padding(20)
-                    }
-                  }
-                  .width('100%')
-                  .padding(16)
-                  .backgroundColor(Color.White)
-                  .borderRadius(12)
+                  Blank()
                 }
                 .width('100%')
-                .padding(16)
-              }
-            }
-            .flexGrow(1)
+                .padding({ left: 16, right: 16, top: 16, bottom: 8 })
 
-            // 固定在底部的发表评论区域
-            Column({ space: 8 }) {
-              if (!this.showCommentInput) {
-                // 显示"发表评论"按钮
-                Button('发表评论')
-                  .width('100%')
-                  .height(40)
-                  .backgroundColor('#4CAF50')
-                  .fontColor(Color.White)
-                  .borderRadius(8)
-                  .onClick(() => this.toggleCommentInput())
-              } else {
-                // 显示输入框和发送按钮
-                Column({ space: 8 }) {
-                  TextArea({ placeholder: '写下你的评论...' })
-                    .width('100%')
-                    .height(80)
-                    .backgroundColor(Color.White)
-                    .borderRadius(8)
-                    .fontSize(14)
-                    .fontColor(Color.Black)
-                    .placeholderColor(Colors.Black40)
-                    .onChange((value: string) => {
-                      this.newComment = value;
+                // 评论列表
+                if (this.comments.length > 0) {
+                  Column({ space: 12 }) {
+                    ForEach(this.comments, (comment: Comment, index: number) => {
+                      Row({ space: 12 }) {
+                        // 评论者头像
+                        if (comment.userAvatarUrl) {
+                          Image(comment.userAvatarUrl)
+                            .width(32)
+                            .height(32)
+                            .borderRadius(16)
+                            .objectFit(ImageFit.Cover)
+                        } else {
+                          Image($r('app.media.startIcon'))
+                            .width(32)
+                            .height(32)
+                            .borderRadius(16)
+                            .objectFit(ImageFit.Cover)
+                        }
+
+                        // 评论内容
+                        Column({ space: 4 }) {
+                          Row() {
+                            Text(comment.username || '匿名用户')
+                              .fontSize(14)
+                              .fontWeight(FontWeight.Medium)
+                              .fontColor(Color.Black)
+
+                            // 删除提示
+                            Blank()
+                            Text('双击删除')
+                              .fontSize(10)
+                              .fontColor('#999')
+                              .fontStyle(FontStyle.Italic)
+                          }
+                          .width('100%')
+
+                          Text(comment.content)
+                            .fontSize(14)
+                            .fontColor(Color.Black)
+                            .width('100%')
+                            .textAlign(TextAlign.Start)
+                            .lineHeight(20)
+                        }
+                        .layoutWeight(1)
+                      }
+                      .width('100%')
+                      .padding(12)
+                      .backgroundColor(Colors.White10)
+                      .borderRadius(8)
+                      .alignItems(VerticalAlign.Top)
+                      .gesture(
+                        // 双击删除评论
+                        TapGesture({ count: 2 })
+                          .onAction(() => {
+                            console.log('=== 双击评论被触发 ===');
+                            console.log('评论信息:', comment);
+                            console.log('评论ID:', comment.commentId);
+                            this.deleteComment(comment);
+                          })
+                      )
                     })
-
-                  Button(this.isCommenting ? '发送中...' : '发送')
+                  }
+                  .padding({ left: 16, right: 16, bottom: 16 })
+                } else {
+                  Text('暂无评论')
+                    .fontSize(14)
+                    .fontColor(Colors.Black40)
+                    .textAlign(TextAlign.Center)
                     .width('100%')
-                    .height(40)
-                    .backgroundColor('#4CAF50')
-                    .fontColor(Color.White)
-                    .borderRadius(8)
-                    .enabled(!this.isCommenting && this.newComment.trim() !== '')
-                    .onClick(() => this.postComment())
-                    .width('100%')
+                    .padding(20)
                 }
               }
+              .width('100%')
+              .backgroundColor(Color.White)
+
+              // 底部间距，为固定输入区域留出空间（增加高度确保最后一条评论不被遮挡）
+              Text('')
+                .height(120)
             }
-            .width('100%')
-            .padding(16)
-            .backgroundColor(Color.White)
-            .borderRadius(12)
-            .margin({ top: 8 })
+            .padding({ top: 0, left: 0, right: 0, bottom: 0 })
+            .margin({ top: 0, left: 0, right: 0, bottom: 0 })
+            }
+            .layoutWeight(1)
+            .padding({ top: 0, left: 0, right: 0, bottom: 0 })
           }
-          .flexGrow(1)
+          .onRefreshing(() => {
+            this.refreshPage();
+          })
         } else {
           // 错误状态
           Column() {
@@ -1750,7 +2172,7 @@ struct ImageDetailPage {
         ]
       })
 
-      // 覆盖层：三点下拉菜单（绝对定位到右上角）
+      // 覆盖层：三点下拉菜单（绝对定位到按钮正下方）
       if (this.showActions) {
         Column({ space: 8 }) {
           Text('保存图片')
@@ -1773,33 +2195,56 @@ struct ImageDetailPage {
             Text('删除图片')
               .fontSize(14)
               .fontColor('#FF3B30')
-              .padding({ top: 10, bottom: 10, left: 14, right: 14 })
+              .padding({ top: 12, bottom: 12, left: 16, right: 16 })
               .backgroundColor('#FFF5F5')
               .borderRadius(8)
-              .onClick(async () => {
-                if (this.imageDetail) {
-                  try {
-                    const res = await ApiService.deleteImage(this.imageDetail.imageId);
-                    if (res.code === 1) {
-                      promptAction.showToast({ message: '删除成功' });
-                      this.showActions = false;
-                      router.back();
-                      return;
-                    }
-                    promptAction.showToast({ message: res.msg || '删除失败' });
-                  } catch (e) {
-                    promptAction.showToast({ message: '删除失败' });
-                  }
-                }
-                this.showActions = false;
+              .margin({ top: 4 }) // 为删除图片文字添加顶部间距
+              .onClick(() => {
+                this.showActions = false; // 先关闭菜单
+                this.showDeleteConfirmation(); // 显示删除确认对话框
               })
           }
         }
         .backgroundColor(Color.White)
         .borderRadius(12)
         .shadow({ radius: 8, color: '#22000000', offsetX: 0, offsetY: 2 })
-        .align(Alignment.TopEnd)
-        .margin({ top: 56, right: 16 })
+        .width(120) // 设置菜单宽度为120vp
+        .position({ x: '100%', y: 56 })
+        .translate({ x: -140, y: 0 }) // 向左偏移140vp，使菜单与右边有距离
+      }
+
+      // 固定在底部的评论输入区域（覆盖在内容之上）
+      if (this.imageDetail) {
+        Row({ space: 12 }) {
+          TextInput({ placeholder: '说点什么...', text: this.newComment })
+            .layoutWeight(1)
+            .height(50)
+            .backgroundColor(Color.White)
+            .borderRadius(25)
+            .fontSize(14)
+            .fontColor(Color.Black)
+            .placeholderColor(Colors.Black40)
+            .onChange((value: string) => {
+              this.newComment = value;
+            })
+
+          Button(this.isCommenting ? '发送中...' : '发送')
+            .width(80)
+            .height(50)
+            .backgroundColor('#4CAF50')
+            .fontColor(Color.White)
+            .borderRadius(25)
+            .fontSize(14)
+            .enabled(!this.isCommenting && this.newComment.trim() !== '')
+            .onClick(() => this.postComment())
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+        .backgroundColor(Color.White)
+        .borderRadius({ topLeft: 16, topRight: 16 })
+        .shadow({ radius: 8, color: '#1A000000', offsetX: 0, offsetY: -2 })
+        .position({ x: 0, y: '100%' })
+        .translate({ x: 0, y: -80 }) // 固定在屏幕底部
       }
     }
     .width('100%')

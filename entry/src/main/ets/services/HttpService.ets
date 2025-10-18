@@ -311,7 +311,8 @@ export class HttpService {
     filePath: string,
     fileName: string,
     content: string = '',
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    fieldName: string = 'multipartFile'
   ): Promise<ApiResponse<T>> {
     return new Promise(async (resolve, reject) => {
       const httpRequest = http.createHttp();
@@ -334,7 +335,7 @@ export class HttpService {
 
         // 3. 构建multipart/form-data请求体（使用已读取的文件内容）
         const boundary = '----WebKitFormBoundary' + Math.random().toString(16).substring(2);
-        const formDataBody = HttpService.buildMultipartFormDataWithContent(boundary, fileContent, fileName, mimeType, content);
+        const formDataBody = HttpService.buildMultipartFormDataWithContent(boundary, fileContent, fileName, mimeType, content, fieldName);
 
         // 4. 配置请求头
         const requestHeaders: Record<string, string> = {
@@ -503,7 +504,7 @@ export class HttpService {
 
 
   /** 构建multipart/form-data请求体（使用已读取的文件内容） */
-  private static buildMultipartFormDataWithContent(boundary: string, fileContent: Uint8Array, fileName: string, mimeType: string, content: string = ''): string {
+  private static buildMultipartFormDataWithContent(boundary: string, fileContent: Uint8Array, fileName: string, mimeType: string, content: string = '', fieldName: string = 'multipartFile'): string {
     try {
       // 将文件内容转换为base64
       const base64 = HttpService.arrayBufferToBase64(fileContent);
@@ -514,25 +515,28 @@ export class HttpService {
       // 构建multipart/form-data格式
       let body = '';
 
-      // 添加multipartFile字段（文件内容）
+      // 添加文件字段（文件内容）
       body += `--${boundary}\r\n`;
-      body += `Content-Disposition: form-data; name="multipartFile"; filename="${fileName}"\r\n`;
+      body += `Content-Disposition: form-data; name="${fieldName}"; filename="${fileName}"\r\n`;
       body += `Content-Type: ${mimeType}\r\n`;
       body += `Content-Transfer-Encoding: base64\r\n\r\n`;
       body += base64;
       body += `\r\n`;
 
-      // 添加imageName字段
-      body += `--${boundary}\r\n`;
-      body += `Content-Disposition: form-data; name="imageName"\r\n\r\n`;
-      body += fileName;
-      body += `\r\n`;
+      // 如果是头像上传，不需要添加其他字段
+      if (fieldName !== 'headshotImage') {
+        // 添加imageName字段
+        body += `--${boundary}\r\n`;
+        body += `Content-Disposition: form-data; name="imageName"\r\n\r\n`;
+        body += fileName;
+        body += `\r\n`;
 
-      // 添加content字段
-      body += `--${boundary}\r\n`;
-      body += `Content-Disposition: form-data; name="content"\r\n\r\n`;
-      body += content;
-      body += `\r\n`;
+        // 添加content字段
+        body += `--${boundary}\r\n`;
+        body += `Content-Disposition: form-data; name="content"\r\n\r\n`;
+        body += content;
+        body += `\r\n`;
+      }
 
       // 结束边界
       body += `--${boundary}--\r\n`;

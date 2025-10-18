@@ -1,10 +1,15 @@
 import router from '@ohos.router';
 import promptAction from '@ohos.promptAction';
+import picker from '@ohos.file.picker';
+import fs from '@ohos.file.fs';
+import image from '@ohos.multimedia.image';
 import { ImageItem, PageRequest, PageResponse } from '../models/Image';
 import { ApiService } from '../services/ApiService';
 import { HttpService } from '../services/HttpService';
+import { UserBasicInfo } from '../models/User';
 import { Colors } from '../common/Colors';
 import { BottomNavBar } from '../common/BottomNavBar';
+import { UserState } from '../services/UserState';
 
 /** 图片摘要信息接口 */
 interface ImageSummary {
@@ -41,6 +46,10 @@ struct ProfilePage {
   @State currentTab: string = 'works'; // 'works'、'favorites' 或 'history'
   @State favoriteCount: number = 0;
   @State historyCount: number = 0;
+  @State userAvatar: image.PixelMap | null = null;
+  @State isUploadingAvatar: boolean = false;
+  @State userAvatarUrl: string = ''; // 服务器返回的头像URL
+  @State userBasicInfo: UserBasicInfo | null = null; // 用户基本信息
 
   /**
    * 去掉文件后缀，只显示图片名称
@@ -58,16 +67,145 @@ struct ProfilePage {
   }
 
   aboutToAppear() {
-    this.loadUserInfo();
+    this.loadUserBasicInfo(); // 使用新的用户基本信息API
     this.loadMyImages(true);
     this.loadFavoriteCount();
     this.loadHistoryCount();
+    
+    // 监听用户状态变化
+    UserState.addListener((userInfo) => {
+      if (userInfo && userInfo.headshotUrl) {
+        this.userAvatarUrl = userInfo.headshotUrl;
+        console.log('用户头像URL更新:', this.userAvatarUrl);
+      }
+    });
+    
+    // 初始化时获取用户头像URL
+    const userInfo = UserState.getUserInfo();
+    if (userInfo && userInfo.headshotUrl) {
+      this.userAvatarUrl = userInfo.headshotUrl;
+      console.log('页面初始化时设置头像URL:', this.userAvatarUrl);
+    }
   }
 
   onPageShow() {
-    // 页面显示时重新加载用户信息，确保登录状态更新后能刷新页面
-    console.log('ProfilePage onPageShow - 重新加载用户信息');
-    this.loadUserInfo();
+    // 页面显示时重新加载用户信息和当前标签页数据，确保从详情页返回时数据是最新的
+    console.log('ProfilePage onPageShow - 重新加载用户信息和数据');
+    
+    // 先检查全局状态中是否有头像URL
+    const userInfo = UserState.getUserInfo();
+    if (userInfo && userInfo.headshotUrl) {
+      this.userAvatarUrl = userInfo.headshotUrl;
+      console.log('页面显示时使用全局状态中的头像URL:', this.userAvatarUrl);
+    }
+    
+    // 加载用户基本信息
+    this.loadUserBasicInfo();
+    
+    // 根据当前标签页重新加载数据
+    if (this.currentTab === 'works') {
+      this.loadMyImages(true);
+    } else if (this.currentTab === 'favorites') {
+      this.loadFavorites(true);
+    } else if (this.currentTab === 'history') {
+      this.loadHistory(true);
+    }
+  }
+
+  /**
+   * 加载用户基本信息
+   */
+  async loadUserBasicInfo() {
+    try {
+      // 先检查是否有token
+      const token = await HttpService.getToken();
+      console.log('检查用户登录状态，token:', token ? '存在' : '不存在');
+      
+      if (!token) {
+        this.isLoggedIn = false;
+        this.imageCount = 0;
+        this.currentUsername = '我';
+        this.currentUserAccount = 'user@example.com';
+        return;
+      }
+
+      // 有token，设置为已登录状态
+      this.isLoggedIn = true;
+      
+      console.log('开始获取用户基本信息');
+      const response = await ApiService.getUserBasicInformation();
+      console.log('获取用户基本信息响应:', JSON.stringify(response, null, 2));
+      
+      if (response.code === 1 && response.data) {
+        this.userBasicInfo = response.data;
+        console.log('用户基本信息获取成功:', this.userBasicInfo);
+        
+        // 更新用户名和头像
+        if (response.data.username) {
+          this.currentUsername = response.data.username;
+        }
+        
+        if (response.data.headshotUrl) {
+          // 构建完整的头像URL
+          const baseUrl = HttpService.getBaseUrl();
+          this.userAvatarUrl = `${baseUrl}/images/${response.data.headshotUrl}`;
+          console.log('用户头像URL:', this.userAvatarUrl);
+          
+          // 更新全局用户状态
+          const userInfo = UserState.getUserInfo();
+          if (userInfo) {
+            userInfo.headshotUrl = this.userAvatarUrl;
+            userInfo.username = response.data.username;
+            UserState.setUserInfo(userInfo);
+          }
+        }
+        
+        // 更新用户账号（使用email字段，如果email为null则使用username作为备选）
+        if (response.data.email && response.data.email !== null) {
+          this.currentUserAccount = response.data.email;
+        } else if (response.data.username) {
+          this.currentUserAccount = response.data.username;
+        } else {
+          this.currentUserAccount = 'user@example.com';
+        }
+        
+        // 获取用户图片数量
+        try {
+          console.log('开始获取用户图片数量');
+          const imageCountResponse = await ApiService.getMyImageCount();
+          console.log('获取图片数量响应:', JSON.stringify(imageCountResponse, null, 2));
+          
+          if (imageCountResponse.code === 1) {
+            // 后端返回的数据结构是 {number: 2}，需要提取number字段
+            if (imageCountResponse.data && typeof imageCountResponse.data === 'object') {
+              const data = imageCountResponse.data as ImageCountData;
+              this.imageCount = data.number || 0;
+            } else {
+              this.imageCount = 0;
+            }
+            console.log('用户已登录，图片数量:', this.imageCount);
+          } else {
+            this.imageCount = 0;
+            console.error('获取图片数量失败，响应码:', imageCountResponse.code, '消息:', imageCountResponse.msg);
+          }
+        } catch (imageCountError) {
+          console.error('获取图片数量失败:', imageCountError);
+          this.imageCount = 0;
+        }
+      } else {
+        console.error('获取用户基本信息失败，响应码:', response.code, '消息:', response.msg);
+        // 即使获取用户信息失败，也保持登录状态
+        console.log('保持登录状态，使用默认用户信息');
+      }
+    } catch (error) {
+      console.error('获取用户基本信息失败:', error);
+      // 只有在没有token的情况下才设置为未登录
+      const token = await HttpService.getToken();
+      if (!token) {
+        this.isLoggedIn = false;
+        this.imageCount = 0;
+      }
+    }
   }
 
   /**
@@ -100,6 +238,18 @@ struct ProfilePage {
           // 设置真实用户信息
           this.currentUsername = userInfoResponse.data.username || '我';
           this.currentUserAccount = userInfoResponse.data.userAccount || 'user@example.com';
+          
+          // 更新全局用户状态
+          UserState.setUserInfo(userInfoResponse.data);
+          
+          // 如果服务器返回了头像URL且本地没有设置，则更新本地状态
+          if (userInfoResponse.data.headshotUrl && !this.userAvatarUrl) {
+            this.userAvatarUrl = userInfoResponse.data.headshotUrl;
+            console.log('从服务器获取到头像URL:', this.userAvatarUrl);
+          } else if (userInfoResponse.data.headshotUrl) {
+            console.log('本地已有头像URL，保持当前设置:', this.userAvatarUrl);
+          }
+          
           console.log('用户信息获取成功:', this.currentUsername, this.currentUserAccount);
         } else {
           // 如果获取用户信息失败，使用默认值
@@ -163,7 +313,7 @@ struct ProfilePage {
     try {
       const request: PageRequest = {
         page: this.currentPage,
-        size: 8
+        size: 50
       };
 
       console.log('开始加载我的图片，请求参数:', request);
@@ -211,8 +361,14 @@ struct ProfilePage {
   async refreshData() {
     this.isRefreshing = true;
     try {
-      await this.loadUserInfo();
-      await this.loadMyImages(true);
+      await this.loadUserBasicInfo(); // 使用正确的用户基本信息API
+      if (this.currentTab === 'works') {
+        await this.loadMyImages(true);
+      } else if (this.currentTab === 'favorites') {
+        await this.loadFavorites(true);
+      } else if (this.currentTab === 'history') {
+        await this.loadHistory(true);
+      }
     } finally {
       this.isRefreshing = false;
     }
@@ -224,7 +380,13 @@ struct ProfilePage {
   loadMore() {
     if (this.hasMore && !this.isLoading) {
       this.currentPage++;
-      this.loadMyImages();
+      if (this.currentTab === 'works') {
+        this.loadMyImages();
+      } else if (this.currentTab === 'favorites') {
+        this.loadFavorites();
+      } else if (this.currentTab === 'history') {
+        this.loadHistory();
+      }
     }
   }
 
@@ -259,8 +421,9 @@ struct ProfilePage {
         // 更新本地状态
         const index = this.myImages.findIndex((img: ImageItem) => img.imageId === image.imageId);
         if (index !== -1) {
-          this.myImages[index].isLiked = !this.myImages[index].isLiked;
-          this.myImages[index].likeCount = (this.myImages[index].likeCount || 0) + (this.myImages[index].isLiked ? 1 : -1);
+          // isLike 是数字类型：1=已点赞，0=未点赞
+          this.myImages[index].isLike = this.myImages[index].isLike === 1 ? 0 : 1;
+          this.myImages[index].imageLike = (this.myImages[index].imageLike || 0) + (this.myImages[index].isLike === 1 ? 1 : -1);
         }
       }
     } catch (error) {
@@ -401,6 +564,104 @@ struct ProfilePage {
    * 退出登�?
    */
   /**
+   * 选择头像
+   */
+  async selectAvatar() {
+    try {
+      const photoSelectOptions = new picker.PhotoSelectOptions();
+      photoSelectOptions.MIMEType = picker.PhotoViewMIMETypes.IMAGE_TYPE;
+      photoSelectOptions.maxSelectNumber = 1;
+
+      const photoPicker = new picker.PhotoViewPicker();
+      const photoSelectResult = await photoPicker.select(photoSelectOptions);
+
+      if (photoSelectResult.photoUris && photoSelectResult.photoUris.length > 0) {
+        const selectedImagePath = photoSelectResult.photoUris[0];
+        console.log('选择的头像路径:', selectedImagePath);
+        
+        // 加载预览图片
+        await this.loadAvatarPreview(selectedImagePath);
+        
+        // 上传头像
+        await this.uploadAvatar(selectedImagePath);
+      }
+    } catch (error) {
+      console.error('选择头像失败:', error);
+      promptAction.showToast({ message: '选择头像失败' });
+    }
+  }
+
+  /**
+   * 加载头像预览
+   */
+  async loadAvatarPreview(imagePath: string) {
+    try {
+      const file = fs.openSync(imagePath, fs.OpenMode.READ_ONLY);
+      const imageSource = image.createImageSource(file.fd);
+      this.userAvatar = await imageSource.createPixelMap();
+      fs.closeSync(file);
+    } catch (error) {
+      console.error('加载头像预览失败:', error);
+    }
+  }
+
+  /**
+   * 上传头像
+   */
+  async uploadAvatar(imagePath: string) {
+    this.isUploadingAvatar = true;
+    try {
+      // 提取文件名
+      const fileName = imagePath.split('/').pop() || 'avatar.jpg';
+      console.log('开始上传头像，文件路径:', imagePath, '文件名:', fileName);
+      
+      const response = await ApiService.uploadUserAvatar(imagePath, fileName);
+      console.log('头像上传响应:', response);
+      
+      if (response.code === 1) {
+        promptAction.showToast({ message: '头像上传成功' });
+        console.log('头像上传成功');
+        
+        // 直接使用服务器返回的头像URL
+        if (response.data && typeof response.data === 'string') {
+          this.userAvatarUrl = response.data;
+          console.log('使用服务器返回的头像URL:', this.userAvatarUrl);
+          
+          // 更新全局用户状态中的头像URL
+          const userInfo = UserState.getUserInfo();
+          if (userInfo) {
+            userInfo.headshotUrl = response.data;
+            UserState.setUserInfo(userInfo);
+            console.log('更新全局用户状态中的头像URL');
+          }
+          
+          // 更新本地用户基本信息中的头像URL
+          if (this.userBasicInfo) {
+            this.userBasicInfo.headshotUrl = response.data;
+            console.log('更新本地用户基本信息中的头像URL');
+          }
+        } else {
+          console.log('服务器返回的数据格式不正确:', response.data);
+          // 如果服务器没有返回正确的头像URL，使用本地选择的头像作为临时显示
+          console.log('使用本地头像作为临时显示');
+        }
+      } else {
+        console.error('头像上传失败，响应码:', response.code, '错误信息:', response.msg);
+        promptAction.showToast({ message: response.msg || '头像上传失败' });
+      }
+    } catch (error) {
+      console.error('头像上传异常:', error);
+      if (error instanceof Error) {
+        promptAction.showToast({ message: `头像上传失败: ${error.message}` });
+      } else {
+        promptAction.showToast({ message: '头像上传失败，请检查网络连接' });
+      }
+    } finally {
+      this.isUploadingAvatar = false;
+    }
+  }
+
+  /**
    * 删除图片
    */
   async deleteImage(image: ImageItem) {
@@ -510,12 +771,60 @@ struct ProfilePage {
         Column({ space: 20 }) {
           Row({ space: 20 }) {
             // 用户头像 - 更大
-            Image($r('app.media.tupian'))
-              .width(80)
-              .height(80)
-              .borderRadius(40)
-              .objectFit(ImageFit.Cover)
-              .shadow({ radius: 8, color: '#1A000000', offsetX: 0, offsetY: 2 })
+            Stack() {
+              if (this.userAvatarUrl) {
+                // 优先显示服务器返回的头像URL
+                Image(this.userAvatarUrl)
+                  .width(80)
+                  .height(80)
+                  .borderRadius(40)
+                  .objectFit(ImageFit.Cover)
+                  .shadow({ radius: 8, color: '#1A000000', offsetX: 0, offsetY: 2 })
+              } else if (this.userAvatar) {
+                // 显示本地选择的头像
+                Image(this.userAvatar)
+                  .width(80)
+                  .height(80)
+                  .borderRadius(40)
+                  .objectFit(ImageFit.Cover)
+                  .shadow({ radius: 8, color: '#1A000000', offsetX: 0, offsetY: 2 })
+              } else {
+                // 显示默认头像
+                Image($r('app.media.tupian'))
+                  .width(80)
+                  .height(80)
+                  .borderRadius(40)
+                  .objectFit(ImageFit.Cover)
+                  .shadow({ radius: 8, color: '#1A000000', offsetX: 0, offsetY: 2 })
+              }
+              
+              // 上传状态指示器
+              if (this.isUploadingAvatar) {
+                Column() {
+                  LoadingProgress()
+                    .width(20)
+                    .height(20)
+                    .color(Color.White)
+                  
+                  Text('上传中...')
+                    .fontSize(10)
+                    .fontColor(Color.White)
+                    .margin({ top: 4 })
+                }
+                .width(80)
+                .height(80)
+                .borderRadius(40)
+                .backgroundColor('#80000000')
+                .justifyContent(FlexAlign.Center)
+              }
+            }
+            .width(80)
+            .height(80)
+            .onClick(() => {
+              if (!this.isUploadingAvatar) {
+                this.selectAvatar();
+              }
+            })
 
             // 用户信息 - 更大字体
             Column({ space: 8 }) {
@@ -525,7 +834,7 @@ struct ProfilePage {
                 .fontColor(Color.Black)
                 .alignSelf(ItemAlign.Start)
 
-              Text(this.currentUserAccount || 'user@example.com')
+              Text(this.currentUserAccount)
                 .fontSize(16)
                 .fontColor(Colors.Black60)
                 .alignSelf(ItemAlign.Start)
@@ -648,7 +957,7 @@ struct ProfilePage {
       }
 
       if (!this.isLoggedIn) {
-        // 未登录状�?
+        // 未登录状态
         Column({ space: 24 }) {
           // 用户头像
           Image($r('app.media.wode'))
@@ -713,21 +1022,41 @@ struct ProfilePage {
                   .fontColor(Color.Black)
                   .onClick(() => this.navigateToUpload())
               } else if (this.currentTab === 'favorites') {
-                // 我的收藏空状态 - 只显示简单提示
+                // 我的收藏空状态
+                Text('💖')
+                  .fontSize(48)
+                  .opacity(0.3)
+                  .margin({ bottom: 16 })
+
                 Text('暂无收藏作品')
                   .fontSize(16)
                   .fontColor(Colors.Black60)
+                  .margin({ bottom: 8 })
+
+                Text('去首页发现更多精彩内容吧')
+                  .fontSize(14)
+                  .fontColor(Colors.Black40)
               } else {
-                // 浏览记录空状态 - 只显示简单提示
+                // 浏览记录空状态
+                Text('👁️')
+                  .fontSize(48)
+                  .opacity(0.3)
+                  .margin({ bottom: 16 })
+
                 Text('暂无浏览记录')
                   .fontSize(16)
                   .fontColor(Colors.Black60)
+                  .margin({ bottom: 8 })
+
+                Text('去首页看看有什么新鲜内容')
+                  .fontSize(14)
+                  .fontColor(Colors.Black40)
               }
             }
             .justifyContent(FlexAlign.Center)
             .layoutWeight(1)
           } else {
-            // 图片网格 - 添加刷新功能
+            // 图片网格 - 添加刷新功能（适用于所有标签页）
             Refresh({ refreshing: this.isRefreshing }) {
               Grid() {
                 ForEach(this.myImages, (image: ImageItem, index: number) => {
@@ -789,18 +1118,18 @@ struct ProfilePage {
                           .textOverflow({ overflow: TextOverflow.Ellipsis })
 
                         Row() {
-                          Text(this.currentUsername)
+                          Text(this.currentTab === 'works' ? this.currentUsername : image.username)
                             .fontSize(12)
                             .fontColor(Colors.Black60)
 
                           Blank()
 
                           Row({ space: 4 }) {
-                            Text(image.isLiked ? '❤️' : '🤍')
+                            Text(image.isLike === 1 ? '❤️' : '🤍')
                               .fontSize(16)
                               .onClick(() => this.toggleLike(image))
 
-                            Text((image.likeCount || 0).toString())
+                            Text((image.imageLike || 0).toString())
                               .fontSize(12)
                               .fontColor(Colors.Black60)
                           }
@@ -839,6 +1168,9 @@ struct ProfilePage {
               })
             }
             .layoutWeight(1)
+            .onRefreshing(() => {
+              this.refreshData();
+            })
 
             // 加载更多指示器
             if (this.isLoading) {

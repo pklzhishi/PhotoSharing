@@ -32,4 +32,12 @@ export interface UserInfo {
   userAccount?: string;
   telephoneNumber?: string;
   userId?: number;
+  headshotUrl?: string; // 用户头像URL
+}
+
+/** 用户基本信息数据结构（对应 getUserBasicInformation API） */
+export interface UserBasicInfo {
+  username?: string;
+  headshotUrl?: string;
+  email?: string;
 }

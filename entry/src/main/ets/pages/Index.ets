@@ -4,6 +4,8 @@ import { ImageItem } from '../models/Image';
 import { ApiService } from '../services/ApiService';
 import { Colors } from '../common/Colors';
 import { BottomNavBar } from '../common/BottomNavBar';
+import { UserState } from '../services/UserState';
+import { HttpService } from '../services/HttpService';
 
 /**
  * 图片分享主页
@@ -20,6 +22,8 @@ struct Index {
   @State searchInputOpacity: number = 0;
   @State searchInputHeight: number = 0;
   @State isSearchResult: boolean = false; // 标记当前显示的是否为搜索结果
+  @State userAvatarUrl: string = ''; // 用户头像URL
+  @State username: string = ''; // 用户名
 
   /**
    * 去掉文件后缀，只显示图片名称
@@ -38,6 +42,84 @@ struct Index {
 
   aboutToAppear() {
     this.loadImages();
+    this.loadUserBasicInfo();
+    
+    // 监听用户状态变化
+    UserState.addListener((userInfo) => {
+      if (userInfo && userInfo.headshotUrl) {
+        this.userAvatarUrl = userInfo.headshotUrl;
+        console.log('首页用户头像URL更新:', this.userAvatarUrl);
+      }
+      if (userInfo && userInfo.username) {
+        this.username = userInfo.username;
+        console.log('首页用户名更新:', this.username);
+      }
+    });
+    
+    // 初始化时获取用户信息
+    const userInfo = UserState.getUserInfo();
+    if (userInfo && userInfo.headshotUrl) {
+      this.userAvatarUrl = userInfo.headshotUrl;
+    }
+    if (userInfo && userInfo.username) {
+      this.username = userInfo.username;
+    }
+  }
+
+  onPageShow() {
+    // 页面显示时重新加载数据，确保从详情页返回时数据是最新的
+    console.log('Index onPageShow - 重新加载图片数据');
+    this.loadImages();
+    this.loadUserBasicInfo();
+  }
+
+  /**
+   * 加载用户基本信息
+   */
+  async loadUserBasicInfo() {
+    try {
+      // 先检查是否有token
+      const token = await HttpService.getToken();
+      console.log('首页检查用户登录状态，token:', token ? '存在' : '不存在');
+      
+      if (!token) {
+        console.log('用户未登录，不获取用户基本信息');
+        return;
+      }
+
+      console.log('开始获取用户基本信息');
+      const response = await ApiService.getUserBasicInformation();
+      console.log('获取用户基本信息响应:', JSON.stringify(response, null, 2));
+      
+      if (response.code === 1 && response.data) {
+        console.log('用户基本信息获取成功:', response.data);
+        
+        // 更新用户名
+        if (response.data.username) {
+          this.username = response.data.username;
+        }
+        
+        // 更新头像URL
+        if (response.data.headshotUrl) {
+          // 构建完整的头像URL
+          const baseUrl = HttpService.getBaseUrl();
+          this.userAvatarUrl = `${baseUrl}/images/${response.data.headshotUrl}`;
+          console.log('首页用户头像URL:', this.userAvatarUrl);
+          
+          // 更新全局用户状态
+          const userInfo = UserState.getUserInfo();
+          if (userInfo) {
+            userInfo.headshotUrl = this.userAvatarUrl;
+            userInfo.username = response.data.username;
+            UserState.setUserInfo(userInfo);
+          }
+        }
+      } else {
+        console.error('获取用户基本信息失败，响应码:', response.code, '消息:', response.msg);
+      }
+    } catch (error) {
+      console.error('获取用户基本信息失败:', error);
+    }
   }
 
   /**
@@ -254,10 +336,29 @@ struct Index {
       }else{
         // 顶部导航栏
         Row() {
-          Text('图片分享')
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor(Color.Black)
+          // 用户头像和用户名
+          Row({ space: 8 }) {
+            // 用户头像
+            if (this.userAvatarUrl) {
+              Image(this.userAvatarUrl)
+                .width(32)
+                .height(32)
+                .borderRadius(16)
+                .objectFit(ImageFit.Cover)
+            } else {
+              Image($r('app.media.tupian'))
+                .width(32)
+                .height(32)
+                .borderRadius(16)
+                .objectFit(ImageFit.Cover)
+            }
+            
+            // 用户名
+            Text(this.username || '拾光映画')
+              .fontSize(18)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(Color.Black)
+          }
 
           Blank()
 

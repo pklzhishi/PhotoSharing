@@ -1,8 +1,8 @@
 import { HttpService } from './HttpService';
-import { LoginRequest, RegisterRequest, ApiResponse, LoginSuccessData, UserInfo } from '../models/User';
+import { LoginRequest, RegisterRequest, ApiResponse, LoginSuccessData, UserInfo, UserBasicInfo } from '../models/User';
 import { ImageItem, ImageUploadRequest, PageRequest, PageResponse } from '../models/Image';
 import { PostCommentRequest, Comment } from '../models/Comment';
-import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody, SearchImageRequestData, GetImageInformationRequestData, ChangeBookmarkRequestData, GetCommentsListRequestData } from '../models/ApiRequest';
+import { RegisterRequestData, LoginRequestData, PageRequestData, ToggleLikeRequestData, PostCommentRequestData, DeleteCommentRequestData, EmptyRequestData, ImageUploadBase64Body, ImageUploadObjectBody, ImageUploadMultipartBody, SearchImageRequestData, GetImageInformationRequestData, ChangeBookmarkRequestData, GetCommentsListRequestData,DeleteImageRequestData} from '../models/ApiRequest';
 
 /** API服务类（完全适配后端接口） */
 export class ApiService {
@@ -115,11 +115,15 @@ export class ApiService {
   }
 
   /** 删除图片（适配后端 /api/image/deleteImage） */
+  // static async deleteImage(imageId: number): Promise<ApiResponse<void>> {
+  //   const requestData = new DeleteCommentRequestData(imageId);
+  //   return HttpService.post<void, DeleteCommentRequestData>('/api/bookmark/deleteImage', requestData);
+  // }
+  /** 删除图片（适配后端 /api/image/deleteImage） */
   static async deleteImage(imageId: number): Promise<ApiResponse<void>> {
-    const requestData = new DeleteCommentRequestData(imageId);
-    return HttpService.post<void, DeleteCommentRequestData>('/api/bookmark/deleteImage', requestData);
+    const requestData = new DeleteImageRequestData(imageId);
+    return HttpService.post<void, DeleteImageRequestData>('/api/image/deleteImage', requestData);
   }
-
   /** 获取图片详情（适配后端 /api/image/getImageDetail） */
   static async getImageDetail(imageId: number): Promise<ApiResponse<ImageItem>> {
     const url = `/api/image/getImageDetail?imageId=${imageId}`;
@@ -158,5 +162,16 @@ export class ApiService {
   static async changeBookmark(imageId: number): Promise<ApiResponse<void>> {
     const requestData = new ChangeBookmarkRequestData(imageId);
     return HttpService.post<void, ChangeBookmarkRequestData>('/api/bookmark/changeBookmark', requestData);
+  }
+
+  /** 上传用户头像（使用 /api/user/changeUserHeadshot） */
+  static async uploadUserAvatar(filePath: string, fileName: string): Promise<ApiResponse<string>> {
+    console.log('上传用户头像:', filePath);
+    return HttpService.uploadFileNative<string>('/api/user/changeUserHeadshot', filePath, fileName, '', undefined, 'headshotImage');
+  }
+
+  /** 获取用户基本信息（使用 /api/user/getUserBasicInformation） */
+  static async getUserBasicInformation(): Promise<ApiResponse<UserBasicInfo>> {
+    return HttpService.get<UserBasicInfo>('/api/user/getUserBasicInformation');
   }
 }

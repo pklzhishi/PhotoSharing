@@ -91,10 +91,11 @@ struct UploadPage {
       const imageSource = image.createImageSource(file.fd);
       this.previewImage = await imageSource.createPixelMap();
       fs.closeSync(file);
-    } catch (error) { // 去掉类型标注
+    } catch (error) {
       console.error('加载预览图片失败:', error);
     }
   }
+
 
   /**
    * 上传图片
@@ -111,18 +112,6 @@ struct UploadPage {
 
     this.isUploading = true;
     try {
-      // 检查文件大小（限制为 10MB）
-      // const file = fs.openSync(this.selectedImagePath, fs.OpenMode.READ_ONLY);
-      // const stat = fs.statSync(file.fd);
-      // const maxSize = 10 * 1024 * 1024; // 10MB
-      //
-      // if (stat.size > maxSize) {
-      //   fs.closeSync(file);
-      //   promptAction.showToast({ message: '图片文件过大，请选择小于10MB的图片' });
-      //   return;
-      // }
-      // fs.closeSync(file);
-
         console.log('开始上传图片，文件名:', this.imageName.trim());
         console.log('文件路径:', this.selectedImagePath);
         console.log('内容描述:', this.content.trim());
@@ -151,12 +140,12 @@ struct UploadPage {
         try {
           const testFile = fs.openSync(this.selectedImagePath, fs.OpenMode.READ_ONLY);
           const testStat = fs.statSync(testFile.fd);
-          console.log('a文件验证成功:');
-          console.log('a- 文件大小:', testStat.size, '字节');
-          console.log('a- 文件可读性: 正常');
+          console.log('文件验证成功:');
+          console.log('- 文件大小:', testStat.size, '字节');
+          console.log('- 文件可读性: 正常');
           fs.closeSync(testFile);
         } catch (fileError) {
-          console.error('a文件验证失败:', fileError);
+          console.error('文件验证失败:', fileError);
           promptAction.showToast({ message: '文件读取失败，请重新选择图片' });
           return;
         }
@@ -272,123 +261,125 @@ struct UploadPage {
       .padding({ left: 16, right: 16 })
       .backgroundColor(Color.Transparent)
 
-      // 上传表单
-      Column({ space: 24 }) {
-        // 图片选择区域
-        Column({ space: 16 }) {
-          Text('选择图片')
-            .fontSize(16)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(Color.Black)
-            .alignSelf(ItemAlign.Start)
+      // 可滚动的内容区域
+      Scroll() {
+        // 上传表单
+        Column({ space: 24 }) {
+          // 图片选择区域
+          Column({ space: 16 }) {
 
-          if (this.previewImage) {
-            // 显示预览图片
-            Image(this.previewImage)
+            if (this.previewImage) {
+              // 显示预览图片
+              Image(this.previewImage)
+                .width('100%')
+                .height(200)
+                .borderRadius(12)
+                .objectFit(ImageFit.Cover)
+                .backgroundColor(Colors.White20)
+            } else {
+              // 图片选择按钮
+              Column() {
+                Text('📷')
+                  .fontSize(48)
+                  .opacity(0.6)
+              }
               .width('100%')
-              .height(200)
+              .height(180)
               .borderRadius(12)
-              .objectFit(ImageFit.Cover)
-              .backgroundColor(Colors.White20)
-          } else {
-            // 图片选择按钮
-            Column() {
-              Text('📷')
-                .fontSize(48)
-                .opacity(0.6)
+              .backgroundColor(Colors.White10)
+              .border({
+                width: 2,
+                color: Colors.White20,
+                style: BorderStyle.Dashed
+              })
+              .justifyContent(FlexAlign.Center)
             }
-            .width('100%')
-            .height(200)
-            .borderRadius(12)
-            .backgroundColor(Colors.White10)
-            .border({
-              width: 2,
-              color: Colors.White20,
-              style: BorderStyle.Dashed
-            })
-            .justifyContent(FlexAlign.Center)
+
+            Button(this.previewImage ? '重新选择' : '选择图片')
+              .width('100%')
+              .height(40)
+              .backgroundColor(Colors.White20)
+              .borderRadius(8)
+              .fontSize(14)
+              .fontColor(Color.Black)
+              .onClick(() => this.selectImage())
           }
+          .width('100%')
 
-          Button(this.previewImage ? '重新选择' : '选择图片')
-            .width('100%')
-            .height(40)
-            .backgroundColor(Colors.White20)
-            .borderRadius(8)
-            .fontSize(14)
-            .fontColor(Color.Black)
-            .onClick(() => this.selectImage())
-        }
-        .width('100%')
+          // 图片名称输入
+          Column({ space: 8 }) {
+            Text('图片标题')
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(Color.Black)
+              .alignSelf(ItemAlign.Start)
 
-        // 图片名称输入
-        Column({ space: 8 }) {
-          Text('图片名称')
-            .fontSize(14)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(Color.Black)
-            .alignSelf(ItemAlign.Start)
+            TextInput({ placeholder: '请输入图片标题' })
+              .width('100%')
+              .height(48)
+              .backgroundColor(Colors.White20)
+              .borderRadius(8)
+              .fontSize(16)
+              .fontColor(Color.Black)
+              .placeholderColor(Colors.Black40)
+              .onChange((value: string) => {
+                this.imageName = value;
+              })
+          }
+          .width('100%')
 
-          TextInput({ placeholder: '请输入图片名称' })
+          // 内容描述输入
+          Column({ space: 8 }) {
+            Text('内容描述')
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(Color.Black)
+              .alignSelf(ItemAlign.Start)
+
+            TextArea({ placeholder: '请输入图片内容描述（可选）' })
+              .width('100%')
+              .height(80)
+              .backgroundColor(Colors.White20)
+              .borderRadius(8)
+              .fontSize(16)
+              .fontColor(Color.Black)
+              .placeholderColor(Colors.Black40)
+              .onChange((value: string) => {
+                this.content = value;
+              })
+          }
+          .width('100%')
+
+          // 上传按钮
+          Button(this.isUploading ? '上传中...' : '上传图片')
             .width('100%')
             .height(48)
-            .backgroundColor(Colors.White20)
+            .backgroundColor('#4CAF50')
             .borderRadius(8)
             .fontSize(16)
-            .fontColor(Color.Black)
-            .placeholderColor(Colors.Black40)
-            .onChange((value: string) => {
-              this.imageName = value;
-            })
-        }
-        .width('100%')
-
-        // 内容描述输入
-        Column({ space: 8 }) {
-          Text('内容描述')
-            .fontSize(14)
             .fontWeight(FontWeight.Medium)
-            .fontColor(Color.Black)
-            .alignSelf(ItemAlign.Start)
+            .fontColor(Color.White)
+            .enabled(!this.isUploading && this.selectedImagePath !== '')
+            .onClick(() => this.uploadImage())
+            .margin({ top: 5 })
 
-          TextArea({ placeholder: '请输入图片内容描述（可选）' })
-            .width('100%')
+          // 提示信息
+          Text('支持 JPG、PNG 格式，建议大小不超过 10MB')
+            .fontSize(12)
+            .fontColor(Colors.Black60)
+            .textAlign(TextAlign.Center)
+            .margin({ top: 16 })
+
+          // 添加底部间距，确保内容不会被底部导航栏遮挡
+          Text('')
             .height(80)
-            .backgroundColor(Colors.White20)
-            .borderRadius(8)
-            .fontSize(16)
-            .fontColor(Color.Black)
-            .placeholderColor(Colors.Black40)
-            .onChange((value: string) => {
-              this.content = value;
-            })
         }
         .width('100%')
-
-        // 上传按钮
-        Button(this.isUploading ? '上传中...' : '上传图片')
-          .width('100%')
-          .height(48)
-          .backgroundColor('#4CAF50')
-          .borderRadius(8)
-          .fontSize(16)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(Color.White)
-          .enabled(!this.isUploading && this.selectedImagePath !== '')
-          .onClick(() => this.uploadImage())
-          .margin({ top: 20 })
-
-        // 提示信息
-        Text('支持 JPG、PNG 格式，建议大小不超过 10MB')
-          .fontSize(12)
-          .fontColor(Colors.Black60)
-          .textAlign(TextAlign.Center)
-          .margin({ top: 16 })
+        .padding({ left: 24, right: 24, top: 24, bottom: 24 })
       }
-      .width('100%')
-      .padding({ left: 24, right: 24, top: 24 })
       .layoutWeight(1)
 
-      // 底部导航栏
+      // 底部导航栏 - 固定在底部
       BottomNavBar({ currentPage: 'upload' })
     }
     .width('100%')

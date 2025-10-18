@@ -313,7 +313,7 @@ struct RegisterPage {
       return;
     }
     if (!this.telephoneNumber.trim()) {
-      promptAction.showToast({ message: '请输入手机号' });
+      promptAction.showToast({ message: '请输入邮箱' });
       return;
     }
 
@@ -429,15 +429,15 @@ struct RegisterPage {
                 })
             }
 
-            // 手机号输入框
+            // 邮箱输入框
             Column({ space: 8 }) {
-              Text('手机号')
+              Text('邮箱')
                 .fontSize(14)
                 .fontWeight(FontWeight.Medium)
                 .fontColor(Color.Black)
                 .alignSelf(ItemAlign.Start)
 
-              TextInput({ placeholder: '请输入手机号' })
+              TextInput({ placeholder: '请输入邮箱' })
                 .width('100%')
                 .height(48)
                 .backgroundColor(Colors.White20)
@@ -445,7 +445,7 @@ struct RegisterPage {
                 .fontSize(16)
                 .fontColor(Color.Black)
                 .placeholderColor(Colors.Black40)
-                .type(InputType.PhoneNumber)
+                .type(InputType.Normal)
                 .onChange((value: string) => {
                   this.telephoneNumber = value;
                 })
